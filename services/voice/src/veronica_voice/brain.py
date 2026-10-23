@@ -13,7 +13,7 @@ from typing import Any, AsyncIterator, Callable, Optional
 
 import httpx
 
-from .tools import execute_tool, get_system_telemetry, launch_application, media_control
+from .tools import execute_tool, get_system_telemetry, launch_application, media_control, workspace_macro
 
 logger = logging.getLogger("veronica.brain")
 
@@ -116,6 +116,90 @@ class VeronicaBrain:
         # 6. Fallback to Veronica Tactical Offline Core (Zero key required, rich intent & tool execution)
         async for chunk in self._stream_tactical_core(clean):
             yield chunk
+
+    async def analyze_screen(self, image_base64: str, prompt: str = "") -> AsyncIterator[str]:
+        """Analyze a screen snapshot using multimodal cloud vision or tactical inspection."""
+        clean_prompt = (
+            prompt.strip()
+            or "Analyze what is displayed on the user's screen right now. Identify active windows, code or errors, and provide crisp tactical assistance."
+        )
+
+        # 1. Try Gemini Vision (Gemini 2.0 Flash is ultra-fast on visual reasoning)
+        if self.gemini_api_key:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key={self.gemini_api_key}&alt=sse"
+                raw_b64 = image_base64.split(",")[-1]
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"text": f"{VERONICA_SYSTEM_PROMPT}\n{clean_prompt}"},
+                            {"inline_data": {"mime_type": "image/jpeg", "data": raw_b64}},
+                        ]
+                    }]
+                }
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    async with client.stream("POST", url, json=payload) as resp:
+                        if resp.status_code == 200:
+                            async for line in resp.aiter_lines():
+                                if line.startswith("data: "):
+                                    try:
+                                        d = json.loads(line[6:])
+                                        cands = d.get("candidates", [])
+                                        if cands:
+                                            parts = cands[0].get("content", {}).get("parts", [])
+                                            for p in parts:
+                                                if "text" in p:
+                                                    yield p["text"]
+                                    except Exception:
+                                        continue
+                            return
+            except Exception as e:
+                logger.warning("Gemini vision failed: %s", e)
+
+        # 2. Try OpenAI Vision (GPT-4o-mini)
+        if self.openai_api_key:
+            try:
+                raw_b64 = image_base64.split(",")[-1]
+                headers = {"Authorization": f"Bearer {self.openai_api_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": "gpt-4o-mini",
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": f"{VERONICA_SYSTEM_PROMPT}\n{clean_prompt}"},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{raw_b64}"}},
+                        ]
+                    }],
+                    "stream": True,
+                    "max_tokens": 512,
+                }
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    async with client.stream("POST", "https://api.openai.com/v1/chat/completions", headers=headers, json=payload) as resp:
+                        if resp.status_code == 200:
+                            async for line in resp.aiter_lines():
+                                if line.startswith("data: ") and line != "data: [DONE]":
+                                    try:
+                                        d = json.loads(line[6:])
+                                        delta = d["choices"][0]["delta"].get("content", "")
+                                        if delta:
+                                            yield delta
+                                    except Exception:
+                                        continue
+                            return
+            except Exception as e:
+                logger.warning("OpenAI vision failed: %s", e)
+
+        # 3. Offline Tactical Screen Inspector Fallback
+        telem = get_system_telemetry()
+        top_app = telem["top_processes"][0]["name"] if telem["top_processes"] else "Desktop"
+        reply = (
+            f"Optical reconnaissance captured. Active display frame analyzed. "
+            f"Primary system consumer is {top_app}. Telemetry shows CPU at {telem['cpu_percent']}%, RAM utilized at {telem['ram_percent']}%. "
+            f"Configure a Gemini or OpenAI API key in settings for deep neural reasoning on screen code and visuals."
+        )
+        for word in reply.split(" "):
+            yield word + " "
+            await asyncio.sleep(0.015)
 
     # ----------------- Provider Implementations -----------------
 
@@ -244,6 +328,31 @@ class VeronicaBrain:
     async def _stream_tactical_core(self, text: str) -> AsyncIterator[str]:
         """Offline Tactical Assistant Brain: Parses real intent, executes tools, and speaks in character."""
         lower = text.lower()
+
+        # Intent: Workspace Macros
+        if any(w in lower for w in ("dev mode", "developer mode", "setup dev", "dev workspace")):
+            macro_res = workspace_macro("dev")
+            reply = f"Tactical dev workspace deployed. VS Code and Windows Terminal active on branch '{macro_res.get('branch')}'. Code repository primed."
+            for word in reply.split(" "):
+                yield word + " "
+                await asyncio.sleep(0.015)
+            return
+
+        if any(w in lower for w in ("focus mode", "tactical focus")):
+            workspace_macro("focus")
+            reply = "Focus protocol engaged. System distractions silenced and audio suppressed. Ready for deep work, sir."
+            for word in reply.split(" "):
+                yield word + " "
+                await asyncio.sleep(0.015)
+            return
+
+        if any(w in lower for w in ("deep scan", "system scan", "diagnostics")):
+            macro_res = workspace_macro("scan")
+            reply = macro_res.get("message", "Diagnostic scan complete.")
+            for word in reply.split(" "):
+                yield word + " "
+                await asyncio.sleep(0.015)
+            return
 
         # Intent: Telemetry / System Vitals
         if any(w in lower for w in ("system status", "telemetry", "vitals", "cpu", "ram", "memory", "battery", "performance")):

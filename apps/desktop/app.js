@@ -1,6 +1,8 @@
 /**
  * VERONICA // TACTICAL DESKTOP ASSISTANT - CLIENT APPLICATION
  * Stark Industries HUD Architecture & Audio Reactive Core
+ * Includes: 60fps Arc Reactor canvas, Web Audio SFX engine,
+ * Hands-Free 'Hey Veronica' wake-word, and Multimodal Screen Vision.
  */
 
 (function () {
@@ -15,8 +17,11 @@
   let ws = null;
   let isConnected = false;
   let audioMuted = false;
+  let sfxMuted = false;
+  let wakeWordActive = false;
   let isListening = false;
   let recognition = null;
+  let wakeWordRecognition = null;
   let activeAudio = null;
   let audioQueue = [];
   let isPlayingAudio = false;
@@ -46,6 +51,11 @@
   const speechState = document.getElementById("speechState");
   const muteAudioBtn = document.getElementById("muteAudioBtn");
   const muteAudioIcon = document.getElementById("muteAudioIcon");
+  const sfxToggleBtn = document.getElementById("sfxToggleBtn");
+  const wakeWordBtn = document.getElementById("wakeWordBtn");
+  const wakeWordLabel = document.getElementById("wakeWordLabel");
+  const analyzeScreenBtn = document.getElementById("analyzeScreenBtn");
+  const analyzeScreenChip = document.getElementById("analyzeScreenChip");
   const refreshVitalsBtn = document.getElementById("refreshVitalsBtn");
   const diagBtn = document.getElementById("diagBtn");
   const cmdInput = document.getElementById("cmdInput");
@@ -85,7 +95,7 @@
   setInterval(updateClock, 1000);
   updateClock();
 
-  // --- Web Audio & Visualizer Setup ---
+  // --- Web Audio & Stark Industries SFX Engine ---
   const canvas = document.getElementById("coreCanvas");
   const ctx = canvas.getContext("2d");
   let audioCtx = null;
@@ -110,6 +120,94 @@
     }
   }
 
+  // Synthesized Sound Effects (100% Native Web Audio, zero external mp3 files)
+  const sfx = {
+    boot: function () {
+      if (sfxMuted) return;
+      initAudioContext();
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      [220, 440, 660, 880].forEach(function (freq, idx) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+        gain.gain.setValueAtTime(0.001, now + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.12, now + idx * 0.08 + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.35);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now + idx * 0.08);
+        osc.stop(now + idx * 0.08 + 0.4);
+      });
+    },
+
+    blip: function () {
+      if (sfxMuted) return;
+      initAudioContext();
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(1400, now + 0.08);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    },
+
+    confirm: function () {
+      if (sfxMuted) return;
+      initAudioContext();
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc1.type = "sine";
+      osc2.type = "sine";
+      osc1.frequency.setValueAtTime(520, now);
+      osc2.frequency.setValueAtTime(1040, now);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.25);
+      osc2.stop(now + 0.25);
+    },
+
+    error: function () {
+      if (sfxMuted) return;
+      initAudioContext();
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(180, now);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    },
+  };
+
+  // Toggle SFX
+  sfxToggleBtn.addEventListener("click", function () {
+    sfxMuted = !sfxMuted;
+    sfxToggleBtn.classList.toggle("active", !sfxMuted);
+    if (!sfxMuted) sfx.blip();
+  });
+
   // Draw 60fps Arc Reactor / Core Visualizer
   function drawCore() {
     requestAnimationFrame(drawCore);
@@ -130,7 +228,6 @@
       targetEnergy = Math.max(0.08, sum / (audioDataArray.length * 255));
     }
     currentEnergy += (targetEnergy - currentEnergy) * 0.15;
-
     coreRotation += 0.015 + currentEnergy * 0.08;
 
     // Outer Glow Circle
@@ -264,7 +361,6 @@
     }
 
     ws.onopen = function () {
-      // Send Hello with Token
       const helloFrame = {
         v: 1,
         id: "auth_" + Date.now(),
@@ -305,10 +401,10 @@
         isConnected = true;
         setStatus("status-standby", "STANDBY");
         speechState.textContent = "TACTICAL CHANNEL ONLINE";
+        sfx.boot();
         if (frame.payload && frame.payload.llm) {
           engineLabel.textContent = frame.payload.llm.toUpperCase();
         }
-        // Start periodic ping & telemetry
         if (pingInterval) clearInterval(pingInterval);
         pingInterval = setInterval(sendPing, 4000);
         queryState();
@@ -344,6 +440,7 @@
         break;
 
       case "tool.result":
+        sfx.confirm();
         toolExecutionTag.style.display = "inline-block";
         toolExecutionTag.textContent = `Executed: ${frame.payload.tool}`;
         if (frame.payload.tool === "run_command" && frame.payload.result) {
@@ -369,6 +466,7 @@
         break;
 
       case "error":
+        sfx.error();
         speechState.textContent = "ERROR: " + (frame.payload.message || "Unknown");
         break;
     }
@@ -488,6 +586,7 @@
       micBtn.classList.add("active-mic");
       setStatus("status-listening", "LISTENING");
       speechState.textContent = "CAPTURING AUDIO...";
+      sfx.blip();
     };
 
     recognition.onresult = function (event) {
@@ -507,17 +606,86 @@
       if (query) {
         sendUserMessage(query);
       }
+      // Resume wake word listener if enabled
+      if (wakeWordActive) {
+        setTimeout(startWakeWordListener, 400);
+      }
     };
 
     recognition.onerror = function (e) {
       isListening = false;
       micBtn.classList.remove("active-mic");
       setStatus("status-standby", "STANDBY");
-      console.warn("Recognition error:", e);
+      if (wakeWordActive) {
+        setTimeout(startWakeWordListener, 500);
+      }
     };
-  } else {
-    micBtn.title = "Web Speech API not supported in this browser. Use text input.";
   }
+
+  // --- Hands-Free Wake-Word Recognition ("Hey Veronica") ---
+  function initWakeWord() {
+    if (!SpeechRecognition) return;
+    wakeWordRecognition = new SpeechRecognition();
+    wakeWordRecognition.continuous = true;
+    wakeWordRecognition.interimResults = true;
+    wakeWordRecognition.lang = "en-US";
+
+    wakeWordRecognition.onresult = function (event) {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const phrase = event.results[i][0].transcript.toLowerCase();
+        if (phrase.includes("veronica") || phrase.includes("hey veronica") || phrase.includes("jarvis")) {
+          wakeWordRecognition.stop();
+          sfx.blip();
+          // Extract text after the wake word if any
+          const cleanDirective = phrase
+            .replace(/.*(?:hey\s+)?veronica/i, "")
+            .replace(/.*jarvis/i, "")
+            .trim();
+          if (cleanDirective.length > 2) {
+            sendUserMessage(cleanDirective);
+          } else {
+            toggleSpeech();
+          }
+          break;
+        }
+      }
+    };
+
+    wakeWordRecognition.onend = function () {
+      if (wakeWordActive && !isListening) {
+        try {
+          wakeWordRecognition.start();
+        } catch (e) {}
+      }
+    };
+  }
+
+  function startWakeWordListener() {
+    if (!wakeWordRecognition) initWakeWord();
+    if (wakeWordRecognition && wakeWordActive && !isListening) {
+      try {
+        wakeWordRecognition.start();
+      } catch (e) {}
+    }
+  }
+
+  function toggleWakeWord() {
+    wakeWordActive = !wakeWordActive;
+    wakeWordBtn.classList.toggle("active", wakeWordActive);
+    wakeWordLabel.textContent = wakeWordActive ? "WAKE WORD: ON" : "WAKE WORD: OFF";
+    if (wakeWordActive) {
+      sfx.confirm();
+      startWakeWordListener();
+    } else {
+      if (wakeWordRecognition) {
+        try {
+          wakeWordRecognition.stop();
+        } catch (e) {}
+      }
+    }
+  }
+
+  wakeWordBtn.addEventListener("click", toggleWakeWord);
 
   function toggleSpeech() {
     initAudioContext();
@@ -528,6 +696,11 @@
     if (isListening) {
       recognition.stop();
     } else {
+      if (wakeWordRecognition) {
+        try {
+          wakeWordRecognition.stop();
+        } catch (e) {}
+      }
       chatInput.value = "";
       recognition.start();
     }
@@ -552,6 +725,80 @@
         recognition.stop();
       }
     }
+  });
+
+  // --- Multimodal Screen Vision Capture ---
+  async function captureAndAnalyzeScreen() {
+    initAudioContext();
+    sfx.blip();
+    setStatus("status-thinking", "CAPTURING DISPLAY...");
+    speechState.textContent = "OPTICAL RECON ACTIVE";
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: "always" },
+        audio: false,
+      });
+
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      await video.play();
+
+      const offCanvas = document.createElement("canvas");
+      offCanvas.width = 1280;
+      offCanvas.height = 720;
+      const offCtx = offCanvas.getContext("2d");
+      offCtx.drawImage(video, 0, 0, offCanvas.width, offCanvas.height);
+
+      // Stop stream tracks immediately
+      stream.getTracks().forEach((t) => t.stop());
+
+      const base64Data = offCanvas.toDataURL("image/jpeg", 0.75);
+
+      toolExecutionTag.style.display = "inline-block";
+      toolExecutionTag.textContent = "Optical Recon: Display Frame Captured";
+      currentStreamedText = "";
+      veronicaText.textContent = "Analyzing visual contents of active display...";
+      incomingAudioChunks = [];
+
+      if (ws && isConnected) {
+        ws.send(
+          JSON.stringify({
+            v: 1,
+            id: "screen_" + Date.now(),
+            type: "screen.analyze",
+            payload: {
+              image: base64Data,
+              prompt: "Analyze the user's active display. Provide concise, tactical feedback on what is open, code/errors visible, and next steps.",
+              synthesize: !audioMuted,
+            },
+          })
+        );
+      }
+    } catch (err) {
+      sfx.error();
+      console.warn("Screen capture cancelled or unavailable:", err);
+      setStatus("status-standby", "STANDBY");
+      speechState.textContent = "OPTICAL RECON CANCELLED";
+    }
+  }
+
+  if (analyzeScreenBtn) analyzeScreenBtn.addEventListener("click", captureAndAnalyzeScreen);
+  if (analyzeScreenChip) analyzeScreenChip.addEventListener("click", captureAndAnalyzeScreen);
+
+  // --- Tactical Workspace Macros ---
+  function triggerWorkspaceMacro(macroName) {
+    initAudioContext();
+    sfx.blip();
+    toolExecutionTag.style.display = "inline-block";
+    toolExecutionTag.textContent = `Deploying Workspace: ${macroName.toUpperCase()}`;
+    sendUserMessage(`${macroName} mode`);
+  }
+
+  document.querySelectorAll("[data-macro]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      triggerWorkspaceMacro(this.getAttribute("data-macro"));
+    });
   });
 
   // --- Chat Message Submission ---
@@ -583,7 +830,7 @@
   });
 
   // Quick Chips
-  document.querySelectorAll(".chip").forEach(function (btn) {
+  document.querySelectorAll(".chip[data-query]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       sendUserMessage(this.getAttribute("data-query"));
     });
@@ -599,12 +846,15 @@
 
   function executeTool(name, params) {
     if (ws && isConnected) {
-      ws.send(JSON.stringify({
-        v: 1,
-        id: "tool_" + Date.now(),
-        type: "tool.execute",
-        payload: { tool: name, params: params || {} },
-      }));
+      sfx.blip();
+      ws.send(
+        JSON.stringify({
+          v: 1,
+          id: "tool_" + Date.now(),
+          type: "tool.execute",
+          payload: { tool: name, params: params || {} },
+        })
+      );
     }
   }
 
@@ -619,6 +869,7 @@
     audioMuted = !audioMuted;
     muteAudioIcon.textContent = audioMuted ? "🔇" : "🔊";
     muteAudioBtn.classList.toggle("active", !audioMuted);
+    if (!audioMuted) sfx.blip();
   });
 
   // Terminal Command Runner
@@ -634,7 +885,7 @@
   // Vitals & Diagnostics Buttons
   refreshVitalsBtn.addEventListener("click", queryState);
   diagBtn.addEventListener("click", function () {
-    sendUserMessage("Run full diagnostic report on hardware vitals, memory headroom and active processes.");
+    triggerWorkspaceMacro("scan");
   });
 
   // Memory Panel
@@ -680,29 +931,34 @@
     localStorage.setItem("veronica_token", customToken);
 
     if (ws && isConnected) {
-      ws.send(JSON.stringify({
-        v: 1,
-        id: "settings_" + Date.now(),
-        type: "settings.update",
-        payload: {
-          keys: { groq, openai, gemini, anthropic },
-          voice: voice,
-        },
-      }));
+      ws.send(
+        JSON.stringify({
+          v: 1,
+          id: "settings_" + Date.now(),
+          type: "settings.update",
+          payload: {
+            keys: { groq, openai, gemini, anthropic },
+            voice: voice,
+          },
+        })
+      );
     }
 
+    sfx.confirm();
     settingsModal.classList.remove("open");
   });
 
   testAudioBtn.addEventListener("click", function () {
     const testText = "Veronica tactical speech synthesizer test. All systems operational.";
     if (ws && isConnected) {
-      ws.send(JSON.stringify({
-        v: 1,
-        id: "test_tts_" + Date.now(),
-        type: "tts.request",
-        payload: { text: testText },
-      }));
+      ws.send(
+        JSON.stringify({
+          v: 1,
+          id: "test_tts_" + Date.now(),
+          type: "tts.request",
+          payload: { text: testText },
+        })
+      );
     }
   });
 

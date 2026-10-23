@@ -210,11 +210,49 @@ def search_web(query: str) -> dict[str, Any]:
     return {"status": "success", "query": clean, "url": url, "message": f"Opened search for: '{clean}'"}
 
 
+def workspace_macro(name: str) -> dict[str, Any]:
+    """Execute tactical multi-step workspace routines."""
+    clean = name.lower().strip()
+    if clean in ("dev", "dev_mode", "developer"):
+        repo_root = "c:\\Users\\USER\\veronica"
+        launch_application("code")
+        launch_application("powershell")
+        git_res = execute_command(f"git -C {repo_root} status --short")
+        branch_res = execute_command(f"git -C {repo_root} branch --show-current")
+        branch = branch_res.get("stdout", "master")
+        return {
+            "status": "success",
+            "workspace": "dev",
+            "branch": branch,
+            "git_status": git_res.get("stdout", "clean"),
+            "message": f"Dev workspace deployed. VS Code and terminal active on branch '{branch}'.",
+        }
+    elif clean in ("focus", "focus_mode"):
+        media_control("mute")
+        return {
+            "status": "success",
+            "workspace": "focus",
+            "message": "Focus protocol active. Audio muted and distractions suppressed.",
+        }
+    elif clean in ("scan", "diagnostic", "deep_scan"):
+        telem = get_system_telemetry()
+        return {
+            "status": "success",
+            "workspace": "scan",
+            "telemetry": telem,
+            "message": f"Deep scan complete. CPU at {telem['cpu_percent']}%, RAM utilized: {telem['ram_percent']}%.",
+        }
+    return {"status": "error", "message": f"Unknown workspace macro: '{name}'"}
+
+
 def execute_tool(tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
     """Universal dispatcher for Veronica tools."""
     name = tool_name.lower().strip()
     if name in ("system_status", "telemetry", "vitals"):
         return get_system_telemetry()
+    elif name in ("workspace", "macro", "workspace_macro"):
+        macro_name = params.get("name") or params.get("macro") or params.get("workspace", "dev")
+        return workspace_macro(str(macro_name))
     elif name in ("launch_app", "launch", "open_app"):
         app = params.get("app") or params.get("target") or params.get("name", "")
         return launch_application(str(app))

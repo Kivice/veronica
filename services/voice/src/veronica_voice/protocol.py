@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 PROTOCOL_VERSION = 1
-MAX_FRAME_BYTES = 64 * 1024
-MAX_TEXT_CHARS = 8_000
+MAX_FRAME_BYTES = 1024 * 1024  # 1 MB to accommodate compressed screen snapshots
+MAX_TEXT_CHARS = 32_000
 
 # Client -> service
 CLIENT_TYPES = frozenset({
@@ -22,6 +22,7 @@ CLIENT_TYPES = frozenset({
     "tts.request",
     "settings.update",
     "state.query",
+    "screen.analyze",
 })
 # Service -> client
 SERVER_TYPES = frozenset({

@@ -207,6 +207,38 @@ def _make_handler(ctx: ServiceContext):
                         },
                     ),
                 )
+            elif env.type == "screen.analyze":
+                image_b64 = env.payload.get("image", "")
+                prompt = env.payload.get("prompt", "")
+                synthesize = env.payload.get("synthesize", True)
+
+                if not image_b64:
+                    await _send(ws, Envelope("error", env.id, {"message": "image payload missing"}))
+                    continue
+
+                full_reply = []
+                if hasattr(ctx.llm, "analyze_screen"):
+                    async for chunk in ctx.llm.analyze_screen(image_b64, prompt):
+                        full_reply.append(chunk)
+                        await _send(ws, Envelope("text.delta", env.id, {"text": chunk}))
+                else:
+                    async for chunk in ctx.llm.respond("analyze screen"):
+                        full_reply.append(chunk)
+                        await _send(ws, Envelope("text.delta", env.id, {"text": chunk}))
+
+                await _send(ws, Envelope("text.done", env.id))
+
+                full_text = "".join(full_reply).strip()
+                if synthesize and full_text and ctx.tts is not None:
+                    try:
+                        async for audio_chunk in ctx.tts.stream_audio(full_text):
+                            await _send(
+                                ws,
+                                Envelope("audio.delta", env.id, {"audio": audio_chunk, "format": "mp3"}),
+                            )
+                        await _send(ws, Envelope("audio.done", env.id))
+                    except Exception as exc:
+                        logger.warning("TTS generation skipped: %s", exc)
 
             else:
                 await _send(ws, Envelope("error", env.id, {"message": "unexpected message"}))

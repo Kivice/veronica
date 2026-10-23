@@ -77,3 +77,20 @@ async def test_server_state_query():
             tool_res = json.loads(await ws.recv())
             assert tool_res["type"] == "tool.result"
             assert "ram_total_gb" in tool_res["payload"]["result"]
+
+
+@pytest.mark.asyncio
+async def test_workspace_macro_and_screen_vision():
+    from veronica_voice.tools import workspace_macro
+    macro = workspace_macro("scan")
+    assert macro["status"] == "success"
+    assert "telemetry" in macro
+
+    brain = VeronicaBrain()
+    # Test tactical offline screen inspection
+    chunks = []
+    async for chunk in brain.analyze_screen("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="):
+        chunks.append(chunk)
+    analysis = "".join(chunks)
+    assert "reconnaissance" in analysis.lower() or "display" in analysis.lower()
+

@@ -38,6 +38,17 @@
     </div>
 
     <div class="telemetry-bar">
+      <!-- Hands-Free Wake-Word Toggle -->
+      <button id="wakeWordBtn" class="hud-toggle-pill" title="Toggle Hands-Free 'Hey Veronica' Wake-Word">
+        <span class="toggle-dot"></span>
+        <span id="wakeWordLabel">WAKE WORD: OFF</span>
+      </button>
+
+      <!-- Synthesized Audio SFX Toggle -->
+      <button id="sfxToggleBtn" class="hud-btn-icon active" title="Toggle Stark Sci-Fi Sound Effects">
+        <span>⚡</span>
+      </button>
+
       <div class="telemetry-item" title="WebSocket Ping Latency">
         <span class="telemetry-label">LATENCY</span>
         <span id="pingValue" class="telemetry-val">0.9 ms</span>
@@ -185,10 +196,12 @@
 
         <!-- Directive Quick Chips -->
         <div class="chips-row">
+          <button class="chip chip-highlight" id="analyzeScreenChip">👁️ Analyze Screen</button>
+          <button class="chip" data-macro="dev">🚀 Dev Workspace</button>
+          <button class="chip" data-macro="focus">🎯 Focus Mode</button>
           <button class="chip" data-query="System status report">⚡ System Status</button>
           <button class="chip" data-query="Open VS Code">💻 Launch VS Code</button>
           <button class="chip" data-query="Open Calculator">🧮 Calculator</button>
-          <button class="chip" data-query="Open Task Manager">📊 Task Manager</button>
           <button class="chip" data-query="Search web for latest tech news">🌐 Web Search</button>
           <button class="chip" data-query="Who are you?">🛡️ Identify</button>
         </div>
@@ -202,6 +215,24 @@
         <span class="corner-bracket top-right"></span>
         <h2 class="panel-title">TACTICAL DECK</h2>
         <span class="panel-status-dot"></span>
+      </div>
+
+      <!-- Optical Recon / Multimodal Vision -->
+      <div class="deck-section">
+        <div class="section-title">OPTICAL RECON // SCREEN VISION</div>
+        <button id="analyzeScreenBtn" class="hud-action-btn btn-vision">
+          <span>👁️ ANALYZE ACTIVE DISPLAY</span>
+        </button>
+      </div>
+
+      <!-- Tactical Workspaces & Macros -->
+      <div class="deck-section">
+        <div class="section-title">WORKSPACES & MACROS</div>
+        <div class="workspace-macros-row">
+          <button class="macro-btn" data-macro="dev">🚀 Dev Mode</button>
+          <button class="macro-btn" data-macro="focus">🎯 Focus</button>
+          <button class="macro-btn" data-macro="scan">🔬 Deep Scan</button>
+        </div>
       </div>
 
       <!-- Quick Launch Matrix -->

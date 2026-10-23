@@ -1037,3 +1037,101 @@ body {
 .hud-btn-secondary:hover {
   background: rgba(0, 243, 255, 0.2);
 }
+
+/* =====================================================================
+   WAKE WORD, SFX, VISION & WORKSPACE MACROS
+   ===================================================================== */
+.hud-toggle-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(14, 23, 44, 0.8);
+  border: 1px solid rgba(0, 243, 255, 0.25);
+  color: var(--text-secondary);
+  font-family: var(--font-tech);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.hud-toggle-pill:hover {
+  background: rgba(0, 243, 255, 0.15);
+  border-color: var(--neon-cyan);
+  color: #ffffff;
+}
+
+.hud-toggle-pill.active {
+  background: rgba(0, 255, 136, 0.15);
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+  box-shadow: 0 0 14px rgba(0, 255, 136, 0.3);
+}
+
+.toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: var(--transition-smooth);
+}
+
+.hud-toggle-pill.active .toggle-dot {
+  background: var(--neon-green);
+  box-shadow: 0 0 8px var(--neon-green);
+  animation: pulseGreen 1.5s infinite;
+}
+
+@keyframes pulseGreen {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.6; }
+}
+
+.btn-vision {
+  background: linear-gradient(135deg, rgba(0, 119, 255, 0.2), rgba(0, 243, 255, 0.15));
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 12px var(--neon-cyan-glow);
+  font-weight: 700;
+}
+
+.btn-vision:hover {
+  background: linear-gradient(135deg, rgba(0, 119, 255, 0.35), rgba(0, 243, 255, 0.3));
+  box-shadow: 0 0 20px var(--neon-cyan);
+}
+
+.workspace-macros-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.macro-btn {
+  background: var(--bg-card);
+  border: 1px solid rgba(0, 243, 255, 0.2);
+  border-radius: 6px;
+  color: var(--neon-cyan);
+  padding: 8px 4px;
+  font-family: var(--font-tech);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  text-align: center;
+}
+
+.macro-btn:hover {
+  background: rgba(0, 243, 255, 0.18);
+  border-color: var(--neon-cyan);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 243, 255, 0.25);
+}
+
+.chip-highlight {
+  background: rgba(0, 243, 255, 0.15) !important;
+  border-color: var(--neon-cyan) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.25);
+}
