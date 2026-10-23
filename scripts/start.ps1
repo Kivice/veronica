@@ -64,43 +64,25 @@ if (-not $started) {
     Write-Host "[!] Note: Continuing startup sequence..." -ForegroundColor Yellow
 }
 
-# Launch System Tray Resident and Miniature Desktop UI
-$trayScript = Join-Path $root 'apps/desktop/tray.ps1'
-$miniHtml = Join-Path $root 'apps/desktop/mini.html'
-$miniUrl = "file:///$($miniHtml.Replace('\', '/'))?port=$port&token=$($env:VERONICA_TOKEN)"
-
-Write-Host "[3/4] Initializing Windows System Tray Resident..." -ForegroundColor Cyan
-$trayProc = Start-Process powershell -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$trayScript`" -Port $port -Token `"$($env:VERONICA_TOKEN)`"" -PassThru
-
-Write-Host "[4/4] Deploying Miniature Desktop UI (`"Hey Veronica`")..." -ForegroundColor Cyan
-
-$edgePath = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
-if (-not (Test-Path $edgePath)) {
-    $edgePath = "${env:ProgramFiles}\Microsoft\Edge\Application\msedge.exe"
+# Launch Native Microsoft .NET Shell Application (Zero Browser)
+$shellExe = Join-Path $root 'apps/shell/bin/Veronica.Shell.exe'
+if (-not (Test-Path $shellExe)) {
+    Write-Host "[3/3] Building Native Microsoft .NET Shell..." -ForegroundColor Cyan
+    & (Join-Path $root 'apps/shell/build.ps1')
 }
-$chromePath = "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe"
 
-Add-Type -AssemblyName System.Windows.Forms
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-$posX = [Math]::Max(50, $screen.Width - 460)
-$posY = [Math]::Max(50, $screen.Height - 300)
-
-if (Test-Path $edgePath) {
-    Start-Process $edgePath -ArgumentList "--app=`"$miniUrl`"", "--window-size=440,280", "--window-position=$posX,$posY"
-} elseif (Test-Path $chromePath) {
-    Start-Process $chromePath -ArgumentList "--app=`"$miniUrl`"", "--window-size=440,280", "--window-position=$posX,$posY"
-} else {
-    Start-Process $miniUrl
-}
+Write-Host "[3/3] Launching Native Microsoft .NET Shell Application..." -ForegroundColor Cyan
+$shellProc = Start-Process -FilePath $shellExe -ArgumentList "-port $port -token `"$($env:VERONICA_TOKEN)`"" -PassThru
 
 Write-Host ""
-Write-Host ">>> VERONICA IS FULLY OPERATIONAL <<<" -ForegroundColor Green
-Write-Host "System Tray: Active with Arc Reactor icon (bottom-right notification area)" -ForegroundColor Cyan
-Write-Host "Miniature UI: $miniUrl" -ForegroundColor Gray
-Write-Host "Service PID: $($serviceProcess.Id)" -ForegroundColor Gray
-Write-Host "Tray PID:    $($trayProc.Id)" -ForegroundColor Gray
-Write-Host "Wake-Word:   Say 'Hey Veronica' anytime to summon the Miniature UI" -ForegroundColor Yellow
-Write-Host "Push-to-Talk: Hold [SPACEBAR] or click the Arc Reactor" -ForegroundColor Yellow
+Write-Host ">>> VERONICA IS FULLY OPERATIONAL (NATIVE .NET SHELL) <<<" -ForegroundColor Green
+Write-Host "Shell Engine: Pure Native Microsoft .NET (WPF / DirectX - Zero Browser Engine)" -ForegroundColor Cyan
+Write-Host "Security:     Windows DPAPI Hardware-Tied Encryption // Mutual Auth Loopback" -ForegroundColor Green
+Write-Host "System Tray:  Resident with Arc Reactor icon (notification area)" -ForegroundColor Cyan
+Write-Host "Service PID:  $($serviceProcess.Id)" -ForegroundColor Gray
+Write-Host "Shell PID:    $($shellProc.Id)" -ForegroundColor Gray
+Write-Host "Wake-Word:    Say 'Hey Veronica' anytime to summon the Miniature Shell" -ForegroundColor Yellow
+Write-Host "Push-to-Talk: Click the Vector Arc Reactor or use native keyboard input" -ForegroundColor Yellow
 Write-Host "Press Ctrl+C to shutdown Veronica." -ForegroundColor DarkGray
 
 try {
@@ -111,7 +93,7 @@ try {
     if (-not $serviceProcess.HasExited) {
         $serviceProcess.Kill()
     }
-    if ($trayProc -and -not $trayProc.HasExited) {
-        $trayProc.Kill()
+    if ($shellProc -and -not $shellProc.HasExited) {
+        $shellProc.Kill()
     }
 }
