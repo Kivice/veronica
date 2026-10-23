@@ -25,7 +25,7 @@ namespace Veronica.Shell
     {
         private static Mutex _singleInstanceMutex;
         private NotifyIcon _trayIcon;
-        private MiniWindow _miniWindow;
+        internal MiniWindow _miniWindow;
         private ClientWebSocket _ws;
         private CancellationTokenSource _cts;
         private SpeechRecognitionEngine _speechEngine;
@@ -35,10 +35,15 @@ namespace Veronica.Shell
         [STAThread]
         public static void Main(string[] args)
         {
-            // Security Protocol: Single Instance Mutex enforcement
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                MessageBox.Show("Veronica Error: " + e.ExceptionObject, "Veronica Shell", MessageBoxButton.OK, MessageBoxImage.Error);
+            };
+
+            // Security Protocol: Single Instance Mutex enforcement (User session level)
             bool createdNew;
-            _singleInstanceMutex = new Mutex(true, "Global\\Veronica.Stark.NativeShell.Mutex", out createdNew);
-            EventWaitHandle summonEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Veronica.Stark.SummonEvent");
+            _singleInstanceMutex = new Mutex(true, "Veronica.Stark.NativeShell.Mutex", out createdNew);
+            EventWaitHandle summonEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Veronica.Stark.SummonEvent");
             if (!createdNew)
             {
                 // Signal already-running instance to summon its window
@@ -56,7 +61,7 @@ namespace Veronica.Shell
             }
 
             var app = new Program(port, token, summonEvent);
-            app.Run();
+            app.Run(app._miniWindow);
         }
 
         public Program(int port, string token, EventWaitHandle summonEvent)
@@ -165,47 +170,50 @@ namespace Veronica.Shell
 
         private void InitializeSpeechEngine()
         {
-            try
+            Task.Run(() =>
             {
-                _speechEngine = new SpeechRecognitionEngine();
-                var choices = new Choices();
-                choices.Add("hey veronica");
-                choices.Add("veronica");
-                choices.Add("system vitals");
-                choices.Add("deploy focus");
-
-                var gb = new GrammarBuilder(choices);
-                var grammar = new Grammar(gb);
-                _speechEngine.LoadGrammar(grammar);
-
-                _speechEngine.SpeechRecognized += (s, e) =>
+                try
                 {
-                    if (e.Result.Confidence >= 0.5f)
-                    {
-                        Dispatcher.Invoke(() =>
-                        {
-                            SystemSounds.Asterisk.Play();
-                            SummonMiniWindow();
-                            _miniWindow.SetListeningMode(true);
-                            if (e.Result.Text == "system vitals")
-                            {
-                                TransmitText("Check system vitals");
-                            }
-                            else if (e.Result.Text == "deploy focus")
-                            {
-                                TransmitText("Deploy focus mode");
-                            }
-                        });
-                    }
-                };
+                    _speechEngine = new SpeechRecognitionEngine();
+                    var choices = new Choices();
+                    choices.Add("hey veronica");
+                    choices.Add("veronica");
+                    choices.Add("system vitals");
+                    choices.Add("deploy focus");
 
-                _speechEngine.SetInputToDefaultAudioDevice();
-                _speechEngine.RecognizeAsync(RecognizeMode.Multiple);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Native speech engine initialization note: " + ex.Message);
-            }
+                    var gb = new GrammarBuilder(choices);
+                    var grammar = new Grammar(gb);
+                    _speechEngine.LoadGrammar(grammar);
+
+                    _speechEngine.SpeechRecognized += (s, e) =>
+                    {
+                        if (e.Result.Confidence >= 0.5f)
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                SystemSounds.Asterisk.Play();
+                                SummonMiniWindow();
+                                _miniWindow.SetListeningMode(true);
+                                if (e.Result.Text == "system vitals")
+                                {
+                                    TransmitText("Check system vitals");
+                                }
+                                else if (e.Result.Text == "deploy focus")
+                                {
+                                    TransmitText("Deploy focus mode");
+                                }
+                            });
+                        }
+                    };
+
+                    _speechEngine.SetInputToDefaultAudioDevice();
+                    _speechEngine.RecognizeAsync(RecognizeMode.Multiple);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Native speech engine initialization note: " + ex.Message);
+                }
+            });
         }
 
         private void InitializeMiniWindow()
@@ -226,12 +234,25 @@ namespace Veronica.Shell
 
         private void SummonMiniWindow()
         {
-            Dispatcher.Invoke(() =>
+            Action act = () =>
             {
-                _miniWindow.Show();
-                _miniWindow.Activate();
-                _miniWindow.Focus();
-            });
+                if (_miniWindow != null)
+                {
+                    _miniWindow.Show();
+                    _miniWindow.WindowState = WindowState.Normal;
+                    _miniWindow.Activate();
+                    _miniWindow.Focus();
+                }
+            };
+
+            if (Dispatcher.CheckAccess())
+            {
+                act();
+            }
+            else
+            {
+                Dispatcher.BeginInvoke(act);
+            }
         }
 
         private async Task ConnectLoopbackWsAsync()

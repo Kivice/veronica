@@ -27,7 +27,6 @@ namespace Veronica.Shell
         private TextBox _inputBox;
         private Ellipse _coreCenter;
         private RotateTransform _arcRotate;
-        private Storyboard _arcStoryboard;
         private bool _isListening = false;
 
         public MiniWindow(Action<string> onTransmit, Action onToggleListening, Action onMinimizeToTray)
@@ -50,11 +49,25 @@ namespace Veronica.Shell
             Topmost = true;
             ShowInTaskbar = true;
             ResizeMode = ResizeMode.NoResize;
+            WindowStartupLocation = WindowStartupLocation.Manual;
 
             // Position near bottom-right above system tray
             Rect workArea = SystemParameters.WorkArea;
             Left = Math.Max(40, workArea.Right - Width - 20);
             Top = Math.Max(40, workArea.Bottom - Height - 20);
+
+            Loaded += (s, e) =>
+            {
+                Activate();
+                Focus();
+            };
+
+            // Hide to tray instead of destroying window on close
+            Closing += (s, e) =>
+            {
+                e.Cancel = true;
+                Hide();
+            };
 
             // Drag to reposition anywhere
             MouseDown += (s, e) =>
@@ -226,11 +239,7 @@ namespace Veronica.Shell
                 Duration = TimeSpan.FromSeconds(6),
                 RepeatBehavior = RepeatBehavior.Forever
             };
-            _arcStoryboard = new Storyboard();
-            _arcStoryboard.Children.Add(rotateAnim);
-            Storyboard.SetTarget(rotateAnim, _arcRotate);
-            Storyboard.SetTargetProperty(rotateAnim, new PropertyPath(RotateTransform.AngleProperty));
-            _arcStoryboard.Begin();
+            _arcRotate.BeginAnimation(RotateTransform.AngleProperty, rotateAnim);
 
             Grid.SetColumn(arcCanvas, 0);
             centerGrid.Children.Add(arcCanvas);
