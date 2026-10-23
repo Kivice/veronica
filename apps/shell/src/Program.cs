@@ -38,9 +38,11 @@ namespace Veronica.Shell
             // Security Protocol: Single Instance Mutex enforcement
             bool createdNew;
             _singleInstanceMutex = new Mutex(true, "Global\\Veronica.Stark.NativeShell.Mutex", out createdNew);
+            EventWaitHandle summonEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Veronica.Stark.SummonEvent");
             if (!createdNew)
             {
-                MessageBox.Show("Veronica Shell is already running in your system tray.", "Veronica Security", MessageBoxButton.OK, MessageBoxImage.Information);
+                // Signal already-running instance to summon its window
+                summonEvent.Set();
                 return;
             }
 
@@ -53,11 +55,11 @@ namespace Veronica.Shell
                 if (args[i] == "-token" && i + 1 < args.Length) token = args[i + 1];
             }
 
-            var app = new Program(port, token);
+            var app = new Program(port, token, summonEvent);
             app.Run();
         }
 
-        public Program(int port, string token)
+        public Program(int port, string token, EventWaitHandle summonEvent)
         {
             _port = port;
             _token = token;
@@ -69,7 +71,28 @@ namespace Veronica.Shell
             InitializeSpeechEngine();
             InitializeMiniWindow();
 
+            ThreadPool.QueueUserWorkItem(state =>
+            {
+                while (!_cts.IsCancellationRequested)
+                {
+                    try
+                    {
+                        if (summonEvent.WaitOne(500))
+                        {
+                            SummonMiniWindow();
+                        }
+                    }
+                    catch {}
+                }
+            });
+
             Task.Run(() => ConnectLoopbackWsAsync());
+        }
+
+        protected override void OnStartup(StartupEventArgs e)
+        {
+            base.OnStartup(e);
+            SummonMiniWindow();
         }
 
         private void InitializeTrayIcon()

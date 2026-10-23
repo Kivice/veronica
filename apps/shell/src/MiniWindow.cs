@@ -48,7 +48,7 @@ namespace Veronica.Shell
             AllowsTransparency = true;
             Background = Brushes.Transparent;
             Topmost = true;
-            ShowInTaskbar = false;
+            ShowInTaskbar = true;
             ResizeMode = ResizeMode.NoResize;
 
             // Position near bottom-right above system tray
