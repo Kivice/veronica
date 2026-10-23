@@ -23,6 +23,8 @@ CLIENT_TYPES = frozenset({
     "settings.update",
     "state.query",
     "screen.analyze",
+    "wake_word.detected",
+    "window.command",
 })
 # Service -> client
 SERVER_TYPES = frozenset({
@@ -36,6 +38,8 @@ SERVER_TYPES = frozenset({
     "telemetry",
     "status",
     "error",
+    "wake_word.detected",
+    "window.command",
 })
 
 

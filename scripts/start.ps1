@@ -64,11 +64,15 @@ if (-not $started) {
     Write-Host "[!] Note: Continuing startup sequence..." -ForegroundColor Yellow
 }
 
-# Launch the Tactical Desktop HUD
-$htmlPath = Join-Path $root 'apps/desktop/index.html'
-$appUrl = "file:///$($htmlPath.Replace('\', '/'))?port=$port&token=$($env:VERONICA_TOKEN)"
+# Launch System Tray Resident and Miniature Desktop UI
+$trayScript = Join-Path $root 'apps/desktop/tray.ps1'
+$miniHtml = Join-Path $root 'apps/desktop/mini.html'
+$miniUrl = "file:///$($miniHtml.Replace('\', '/'))?port=$port&token=$($env:VERONICA_TOKEN)"
 
-Write-Host "[3/3] Deploying Stark Tactical Desktop HUD..." -ForegroundColor Cyan
+Write-Host "[3/4] Initializing Windows System Tray Resident..." -ForegroundColor Cyan
+$trayProc = Start-Process powershell -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$trayScript`" -Port $port -Token `"$($env:VERONICA_TOKEN)`"" -PassThru
+
+Write-Host "[4/4] Deploying Miniature Desktop UI (`"Hey Veronica`")..." -ForegroundColor Cyan
 
 $edgePath = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (-not (Test-Path $edgePath)) {
@@ -76,19 +80,27 @@ if (-not (Test-Path $edgePath)) {
 }
 $chromePath = "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe"
 
+Add-Type -AssemblyName System.Windows.Forms
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+$posX = [Math]::Max(50, $screen.Width - 460)
+$posY = [Math]::Max(50, $screen.Height - 300)
+
 if (Test-Path $edgePath) {
-    Start-Process $edgePath -ArgumentList "--app=`"$appUrl`"", "--window-size=1280,840"
+    Start-Process $edgePath -ArgumentList "--app=`"$miniUrl`"", "--window-size=440,280", "--window-position=$posX,$posY"
 } elseif (Test-Path $chromePath) {
-    Start-Process $chromePath -ArgumentList "--app=`"$appUrl`"", "--window-size=1280,840"
+    Start-Process $chromePath -ArgumentList "--app=`"$miniUrl`"", "--window-size=440,280", "--window-position=$posX,$posY"
 } else {
-    Start-Process $appUrl
+    Start-Process $miniUrl
 }
 
 Write-Host ""
 Write-Host ">>> VERONICA IS FULLY OPERATIONAL <<<" -ForegroundColor Green
-Write-Host "Desktop HUD: $appUrl" -ForegroundColor Gray
+Write-Host "System Tray: Active with Arc Reactor icon (bottom-right notification area)" -ForegroundColor Cyan
+Write-Host "Miniature UI: $miniUrl" -ForegroundColor Gray
 Write-Host "Service PID: $($serviceProcess.Id)" -ForegroundColor Gray
-Write-Host "Push-to-Talk: Hold [SPACEBAR] or click the Arc Reactor Mic" -ForegroundColor Yellow
+Write-Host "Tray PID:    $($trayProc.Id)" -ForegroundColor Gray
+Write-Host "Wake-Word:   Say 'Hey Veronica' anytime to summon the Miniature UI" -ForegroundColor Yellow
+Write-Host "Push-to-Talk: Hold [SPACEBAR] or click the Arc Reactor" -ForegroundColor Yellow
 Write-Host "Press Ctrl+C to shutdown Veronica." -ForegroundColor DarkGray
 
 try {
@@ -98,5 +110,8 @@ try {
 } finally {
     if (-not $serviceProcess.HasExited) {
         $serviceProcess.Kill()
+    }
+    if ($trayProc -and -not $trayProc.HasExited) {
+        $trayProc.Kill()
     }
 }

@@ -47,6 +47,7 @@ class ServiceContext:
     llm: Any = field(default_factory=EchoLlm)
     tts: Optional[EdgeTtsEngine] = None
     allowed_origins: frozenset[str] = frozenset()
+    active_clients: set[Any] = field(default_factory=set)
 
 
 def _reject_foreign_origin(ctx: ServiceContext):
@@ -74,7 +75,7 @@ async def _send(ws: ServerConnection, env: Envelope) -> None:
 
 
 def _make_handler(ctx: ServiceContext):
-    async def handler(ws: ServerConnection) -> None:
+    async def _handle_connection(ws: ServerConnection) -> None:
         try:
             raw = await asyncio.wait_for(ws.recv(), HELLO_TIMEOUT_S)
             hello = parse_client_frame(raw)
@@ -108,7 +109,7 @@ def _make_handler(ctx: ServiceContext):
                 },
             ),
         )
-
+        ctx.active_clients.add(ws)
         async for raw in ws:
             try:
                 env = parse_client_frame(raw)
@@ -240,8 +241,34 @@ def _make_handler(ctx: ServiceContext):
                     except Exception as exc:
                         logger.warning("TTS generation skipped: %s", exc)
 
+            elif env.type == "wake_word.detected":
+                logger.info("Wake word detected: %s", env.payload)
+                wake_env = Envelope("wake_word.detected", env.id, env.payload)
+                cmd_env = Envelope("window.command", env.id, {"action": "show_mini", "reason": "wake_word"})
+                for client in list(ctx.active_clients):
+                    try:
+                        await _send(client, wake_env)
+                        await _send(client, cmd_env)
+                    except Exception:
+                        pass
+
+            elif env.type == "window.command":
+                logger.info("Window command: %s", env.payload)
+                cmd_env = Envelope("window.command", env.id, env.payload)
+                for client in list(ctx.active_clients):
+                    try:
+                        await _send(client, cmd_env)
+                    except Exception:
+                        pass
+
             else:
                 await _send(ws, Envelope("error", env.id, {"message": "unexpected message"}))
+
+    async def handler(ws: ServerConnection) -> None:
+        try:
+            await _handle_connection(ws)
+        finally:
+            ctx.active_clients.discard(ws)
 
     return handler
 

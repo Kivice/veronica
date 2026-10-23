@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VERONICA // Mini HUD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@400;600;700;800&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="mini.css">
+</head>
+<body class="mini-hud-body">
+  <div class="mini-container">
+    <!-- Top Bar -->
+    <header class="mini-header">
+      <div class="header-left">
+        <span class="pulse-dot"></span>
+        <span class="mini-title">VERONICA // MINI</span>
+        <span id="miniStatusPill" class="mini-status-pill status-standby">STANDBY</span>
+      </div>
+      <div class="header-right">
+        <button id="miniExpandBtn" class="mini-btn-icon" title="Expand to Full Tactical Deck">⛶ FULL</button>
+        <button id="miniTrayBtn" class="mini-btn-icon" title="Minimize to Tray">🗕 TRAY</button>
+      </div>
+    </header>
+
+    <!-- Core Body -->
+    <main class="mini-main">
+      <!-- Arc Reactor Canvas Left -->
+      <div class="arc-container" title="Click or Hold [SPACEBAR] to Talk">
+        <canvas id="miniCoreCanvas" width="86" height="86"></canvas>
+        <div id="micIndicator" class="mic-indicator">
+          <svg viewBox="0 0 24 24" class="mic-svg">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Feed & Transcript Right -->
+      <div class="feed-container">
+        <!-- Vitals Mini Bar -->
+        <div class="mini-vitals-bar">
+          <span class="vital-item">CPU <b id="miniCpuVal">--%</b></span>
+          <span class="vital-item">RAM <b id="miniRamVal">--%</b></span>
+          <span class="vital-item">RTT <b id="miniRttVal">--ms</b></span>
+          <span id="miniEngineBadge" class="vital-engine">OFFLINE</span>
+        </div>
+
+        <!-- Transcript Window -->
+        <div id="miniTranscript" class="mini-transcript">
+          <div id="miniUserText" class="user-bubble" style="display:none;"></div>
+          <div id="miniVeronicaText" class="veronica-bubble">Ready. Say <b>"Hey Veronica"</b> or hold <b>[SPACEBAR]</b>.</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Quick Directives Row -->
+    <div class="mini-chips-row">
+      <button class="chip-btn" data-action="vitals">⚡ Vitals</button>
+      <button class="chip-btn" data-action="focus">🎯 Focus</button>
+      <button class="chip-btn" data-action="dev">💻 Dev</button>
+      <button class="chip-btn" data-action="vision">👁️ Vision</button>
+    </div>
+
+    <!-- Input Footer -->
+    <footer class="mini-footer">
+      <form id="miniForm" class="mini-input-form">
+        <input type="text" id="miniInput" placeholder="Command Veronica or say 'Hey Veronica'..." autocomplete="off">
+        <button type="submit" id="miniSendBtn" class="mini-send-btn" title="Transmit">➤</button>
+      </form>
+      <button id="miniWakeWordBtn" class="wake-word-pill wake-active" title="Toggle Ambient 'Hey Veronica' Trigger">
+        <span class="wake-radar"></span>
+        <span id="miniWakeLabel">WAKE: ON</span>
+      </button>
+    </footer>
+  </div>
+
+  <script src="mini.js"></script>
+</body>
+</html>

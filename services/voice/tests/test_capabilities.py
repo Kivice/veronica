@@ -94,3 +94,55 @@ async def test_workspace_macro_and_screen_vision():
     analysis = "".join(chunks)
     assert "reconnaissance" in analysis.lower() or "display" in analysis.lower()
 
+
+@pytest.mark.asyncio
+async def test_wake_word_and_window_commands():
+    import json
+    import websockets
+    from veronica_voice.server import ServiceContext, run_server
+
+    ctx = ServiceContext(token="test-secret-token")
+    async with run_server(ctx, port=0) as server:
+        port = server.sockets[0].getsockname()[1]
+        uri = f"ws://127.0.0.1:{port}"
+
+        # Client 1: Represents the Tray Controller
+        async with websockets.connect(uri) as ws_tray:
+            await ws_tray.send(json.dumps({"v": 1, "id": "1", "type": "hello", "payload": {"token": "test-secret-token"}}))
+            ready_tray = json.loads(await ws_tray.recv())
+            assert ready_tray["type"] == "ready"
+
+            # Client 2: Represents the Desktop HUD
+            async with websockets.connect(uri) as ws_hud:
+                await ws_hud.send(json.dumps({"v": 1, "id": "2", "type": "hello", "payload": {"token": "test-secret-token"}}))
+                ready_hud = json.loads(await ws_hud.recv())
+                assert ready_hud["type"] == "ready"
+
+                # HUD emits wake_word.detected
+                await ws_hud.send(json.dumps({
+                    "v": 1,
+                    "id": "wake-1",
+                    "type": "wake_word.detected",
+                    "payload": {"phrase": "hey veronica"}
+                }))
+
+                # Tray receives the wake-word notification and command to show mini HUD
+                tray_event1 = json.loads(await ws_tray.recv())
+                assert tray_event1["type"] == "wake_word.detected"
+                tray_event2 = json.loads(await ws_tray.recv())
+                assert tray_event2["type"] == "window.command"
+                assert tray_event2["payload"]["action"] == "show_mini"
+
+                # HUD requests window command to switch to full deck
+                await ws_hud.send(json.dumps({
+                    "v": 1,
+                    "id": "cmd-1",
+                    "type": "window.command",
+                    "payload": {"action": "show_full"}
+                }))
+
+                tray_event3 = json.loads(await ws_tray.recv())
+                assert tray_event3["type"] == "window.command"
+                assert tray_event3["payload"]["action"] == "show_full"
+
+

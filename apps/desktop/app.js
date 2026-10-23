@@ -465,6 +465,12 @@
         }
         break;
 
+      case "window.command":
+        if (frame.payload && frame.payload.action === "show_mini") {
+          window.location.href = `mini.html?port=${WS_PORT}&token=${WS_TOKEN}`;
+        }
+        break;
+
       case "error":
         sfx.error();
         speechState.textContent = "ERROR: " + (frame.payload.message || "Unknown");
@@ -686,6 +692,22 @@
   }
 
   wakeWordBtn.addEventListener("click", toggleWakeWord);
+
+  const miniHudBtn = document.getElementById("miniHudBtn");
+  if (miniHudBtn) {
+    miniHudBtn.addEventListener("click", function () {
+      sfx.blip();
+      if (ws && isConnected) {
+        ws.send(JSON.stringify({
+          v: 1,
+          id: "cmd_" + Date.now(),
+          type: "window.command",
+          payload: { action: "show_mini" },
+        }));
+      }
+      window.location.href = `mini.html?port=${WS_PORT}&token=${WS_TOKEN}`;
+    });
+  }
 
   function toggleSpeech() {
     initAudioContext();
