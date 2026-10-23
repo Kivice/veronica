@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+target/
+*.egg-info/
+# Never commit secrets, models, or private memory
+.env
+.env.*
+*.gguf
+*.onnx
+*.bin
+models/
+data/
+memory/

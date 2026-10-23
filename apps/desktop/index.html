@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VERONICA // Tactical Desktop Assistant</title>
+  <meta name="description" content="Veronica: Tactical AI Desktop Agent inspired by Stark Industries architecture.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="hud-scanline"></div>
+  <div class="hud-vignette"></div>
+
+  <!-- Top Navigation & Telemetry Banner -->
+  <header class="hud-header">
+    <div class="brand-cluster">
+      <div class="arc-badge">
+        <span class="arc-pulse"></span>
+      </div>
+      <div>
+        <h1 class="brand-title">VERONICA <span class="version-tag">MARK-IV</span></h1>
+        <p class="brand-sub">TACTICAL DESKTOP INTELLIGENCE // STARK ARCHITECTURE</p>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <div id="statusPill" class="status-pill status-standby">
+        <span class="status-indicator"></span>
+        <span id="statusLabel" class="status-text">STANDBY</span>
+      </div>
+      <div class="engine-badge" id="engineBadge" title="Current Active Intelligence Engine">
+        <span class="engine-icon">⚡</span>
+        <span id="engineLabel">TACTICAL CORE</span>
+      </div>
+    </div>
+
+    <div class="telemetry-bar">
+      <div class="telemetry-item" title="WebSocket Ping Latency">
+        <span class="telemetry-label">LATENCY</span>
+        <span id="pingValue" class="telemetry-val">0.9 ms</span>
+      </div>
+      <div class="telemetry-item" title="System Battery Status">
+        <span class="telemetry-label">POWER</span>
+        <span id="batteryValue" class="telemetry-val">100%</span>
+      </div>
+      <div class="telemetry-item" title="System Clock">
+        <span class="telemetry-label">SYS_TIME</span>
+        <span id="clockValue" class="telemetry-val">00:00:00</span>
+      </div>
+      <button id="settingsBtn" class="hud-btn-icon" title="Assistant Configuration">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main HUD Layout Grid -->
+  <main class="hud-grid">
+
+    <!-- LEFT PANEL: Real-time System Vitals -->
+    <aside class="hud-panel vitals-panel">
+      <div class="panel-header">
+        <span class="corner-bracket top-left"></span>
+        <span class="corner-bracket top-right"></span>
+        <h2 class="panel-title">SYSTEM VITALS</h2>
+        <span class="panel-status-dot"></span>
+      </div>
+
+      <!-- CPU Gauge -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">CPU UTILIZATION</span>
+          <span id="cpuPercent" class="metric-value">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div id="cpuBar" class="progress-bar-fill" style="width: 0%"></div>
+        </div>
+        <div class="cores-row" id="coresContainer">
+          <div class="core-mini-bar" style="height: 20%"></div>
+          <div class="core-mini-bar" style="height: 40%"></div>
+          <div class="core-mini-bar" style="height: 15%"></div>
+          <div class="core-mini-bar" style="height: 35%"></div>
+        </div>
+      </div>
+
+      <!-- RAM Gauge -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">MEMORY CONSUMPTION</span>
+          <span id="ramUsageText" class="metric-value">0 / 0 GB</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div id="ramBar" class="progress-bar-fill fill-ram" style="width: 0%"></div>
+        </div>
+        <div class="metric-subtext">
+          <span id="ramPercentText">0% utilized</span>
+          <span id="ramFreeText">0 GB headroom</span>
+        </div>
+      </div>
+
+      <!-- Top Processes -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <span class="metric-name">ACTIVE CONSUMERS</span>
+          <span class="metric-badge">RSS MB</span>
+        </div>
+        <div id="processList" class="process-list">
+          <div class="process-row"><span class="proc-name">Scanning...</span><span class="proc-val">--</span></div>
+        </div>
+      </div>
+
+      <!-- Quick System Actions -->
+      <div class="quick-tactical-actions">
+        <button id="refreshVitalsBtn" class="hud-action-btn">
+          <span>⚡ REFRESH VITALS</span>
+        </button>
+        <button id="diagBtn" class="hud-action-btn">
+          <span>🔬 RUN DIAGNOSTICS</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- CENTER STAGE: Holographic Reactor Core & Voice Terminal -->
+    <section class="hud-center">
+      <!-- 3D Holographic Core Canvas -->
+      <div class="core-stage">
+        <canvas id="coreCanvas" width="460" height="460"></canvas>
+        <div class="core-overlay-data">
+          <span class="core-title">VERONICA CORE</span>
+          <span id="audioModeLabel" class="core-subtitle">VOICE SYNTHESIS ACTIVE</span>
+        </div>
+      </div>
+
+      <!-- Speech Waveform & Real-time Transcript -->
+      <div class="voice-console">
+        <div class="console-meta">
+          <span class="console-label">COMMUNICATION CHANNEL</span>
+          <span id="speechState" class="channel-active">READY FOR INPUT</span>
+        </div>
+
+        <div id="transcriptBox" class="transcript-box">
+          <div class="message veronica-message">
+            <span class="sender-tag">VERONICA</span>
+            <div id="veronicaText" class="message-text">
+              Veronica online and initialized, sir. Hardware monitors are active, local speech synthesis is primed, and desktop tools are under direct command. How can I assist you?
+            </div>
+            <div id="toolExecutionTag" class="tool-tag" style="display: none;"></div>
+          </div>
+        </div>
+
+        <!-- Voice & Chat Input Dock -->
+        <div class="input-dock">
+          <!-- Push to Talk Mic Button -->
+          <button id="micBtn" class="hud-mic-btn" title="Click or Hold SPACEBAR to Speak">
+            <div class="mic-glow-ring"></div>
+            <svg class="mic-icon" viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="none">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+          </button>
+
+          <!-- Text Input Form -->
+          <form id="chatForm" class="chat-form">
+            <input type="text" id="chatInput" class="hud-input" placeholder="Type a tactical directive or hold Spacebar to speak..." autocomplete="off">
+            <button type="submit" id="sendBtn" class="hud-send-btn">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </form>
+
+          <!-- Voice Mute Toggle -->
+          <button id="muteAudioBtn" class="hud-toggle-btn active" title="Toggle Neural Speech Audio">
+            <span id="muteAudioIcon">🔊</span>
+          </button>
+        </div>
+
+        <!-- Directive Quick Chips -->
+        <div class="chips-row">
+          <button class="chip" data-query="System status report">⚡ System Status</button>
+          <button class="chip" data-query="Open VS Code">💻 Launch VS Code</button>
+          <button class="chip" data-query="Open Calculator">🧮 Calculator</button>
+          <button class="chip" data-query="Open Task Manager">📊 Task Manager</button>
+          <button class="chip" data-query="Search web for latest tech news">🌐 Web Search</button>
+          <button class="chip" data-query="Who are you?">🛡️ Identify</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: Tactical Action Deck & Mission Tools -->
+    <aside class="hud-panel deck-panel">
+      <div class="panel-header">
+        <span class="corner-bracket top-left"></span>
+        <span class="corner-bracket top-right"></span>
+        <h2 class="panel-title">TACTICAL DECK</h2>
+        <span class="panel-status-dot"></span>
+      </div>
+
+      <!-- Quick Launch Matrix -->
+      <div class="deck-section">
+        <div class="section-title">QUICK DEPLOY</div>
+        <div class="app-matrix">
+          <button class="app-card" data-app="vscode">
+            <span class="app-icon">💻</span>
+            <span class="app-label">VS Code</span>
+          </button>
+          <button class="app-card" data-app="terminal">
+            <span class="app-icon">⌨️</span>
+            <span class="app-label">Terminal</span>
+          </button>
+          <button class="app-card" data-app="taskmgr">
+            <span class="app-icon">📊</span>
+            <span class="app-label">Task Mgr</span>
+          </button>
+          <button class="app-card" data-app="calc">
+            <span class="app-icon">🔢</span>
+            <span class="app-label">Calculator</span>
+          </button>
+          <button class="app-card" data-app="chrome">
+            <span class="app-icon">🌐</span>
+            <span class="app-label">Chrome</span>
+          </button>
+          <button class="app-card" data-app="notepad">
+            <span class="app-icon">📝</span>
+            <span class="app-label">Notepad</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Media Controls -->
+      <div class="deck-section">
+        <div class="section-title">AUDIO & MEDIA</div>
+        <div class="media-controls-row">
+          <button class="media-btn" id="volDownBtn" title="Volume Down">🔉 -</button>
+          <button class="media-btn" id="playPauseBtn" title="Play/Pause">⏯️ Play</button>
+          <button class="media-btn" id="volUpBtn" title="Volume Up">🔊 +</button>
+          <button class="media-btn" id="mediaMuteBtn" title="Mute OS Audio">🔇</button>
+        </div>
+      </div>
+
+      <!-- Safe Command Runner -->
+      <div class="deck-section">
+        <div class="section-title">TERMINAL COMMAND</div>
+        <div class="cmd-row">
+          <input type="text" id="cmdInput" class="hud-cmd-input" placeholder="e.g. ipconfig, ping 1.1.1.1">
+          <button id="runCmdBtn" class="hud-btn-small">RUN</button>
+        </div>
+        <div id="cmdOutput" class="cmd-terminal-box">Ready for command execution...</div>
+      </div>
+
+      <!-- Memory Log -->
+      <div class="deck-section">
+        <div class="section-title">TACTICAL MEMORY</div>
+        <div class="memory-input-row">
+          <input type="text" id="memoryKeyInput" class="hud-cmd-input" placeholder="Key (e.g. project)">
+          <input type="text" id="memoryValInput" class="hud-cmd-input" placeholder="Value (e.g. Veronica)">
+          <button id="saveMemoryBtn" class="hud-btn-small">SAVE</button>
+        </div>
+        <div id="memoryList" class="memory-list-box"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Settings Configuration Modal -->
+  <div id="settingsModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">VERONICA // SYSTEM CONFIGURATION</h3>
+        <button id="closeSettingsBtn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="groqKey">Groq Cloud API Key <span class="label-hint">(Ultra-Fast Llama 3.3 70B)</span></label>
+          <input type="password" id="groqKey" class="hud-modal-input" placeholder="gsk_...">
+        </div>
+        <div class="form-group">
+          <label for="openaiKey">OpenAI API Key <span class="label-hint">(GPT-4o)</span></label>
+          <input type="password" id="openaiKey" class="hud-modal-input" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label for="geminiKey">Google Gemini API Key <span class="label-hint">(Gemini 2.0 Flash)</span></label>
+          <input type="password" id="geminiKey" class="hud-modal-input" placeholder="AIza...">
+        </div>
+        <div class="form-group">
+          <label for="anthropicKey">Anthropic API Key <span class="label-hint">(Claude 3.5 Sonnet)</span></label>
+          <input type="password" id="anthropicKey" class="hud-modal-input" placeholder="sk-ant-...">
+        </div>
+        <div class="form-group">
+          <label for="voiceSelect">Neural Speech Voice</label>
+          <select id="voiceSelect" class="hud-modal-select">
+            <option value="en-US-AvaNeural">Ava (Expressive, Modern AI)</option>
+            <option value="en-GB-SoniaNeural">Sonia (British, Sophisticated)</option>
+            <option value="en-US-JennyNeural">Jenny (Natural, Warm)</option>
+            <option value="en-US-GuyNeural">Guy (Confident, Crisp)</option>
+            <option value="en-US-ChristopherNeural">Christopher (Authoritative)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="wsUrlInput">WebSocket Connection Endpoint</label>
+          <input type="text" id="wsUrlInput" class="hud-modal-input" value="ws://127.0.0.1:8765">
+        </div>
+        <div class="form-group">
+          <label for="wsTokenInput">Authentication Secret Token</label>
+          <input type="password" id="wsTokenInput" class="hud-modal-input" placeholder="Session Token">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="testAudioBtn" class="hud-btn-secondary">Test Voice Audio</button>
+        <button id="saveSettingsBtn" class="hud-btn-primary">Apply Configuration</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

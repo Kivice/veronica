@@ -1,0 +1,14 @@
+[project]
+name = "veronica-voice"
+version = "0.0.1"
+description = "Veronica local voice service (foundation skeleton)"
+requires-python = ">=3.12,<3.14"   # 3.13 verified; 3.14 wheels exist for key ML deps but are not runtime-tested yet
+dependencies = ["websockets>=14,<16"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+testpaths = ["tests"]
