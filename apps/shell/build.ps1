@@ -37,6 +37,8 @@ $refs = @(
     "/r:System.dll",
     "/r:System.Core.dll",
     "/r:System.Drawing.dll",
+    "/r:System.Security.dll",
+    "/r:System.Web.Extensions.dll",
     "/r:System.Windows.Forms.dll",
     "/r:`"$pf`"",
     "/r:`"$pc`"",
@@ -47,6 +49,7 @@ $refs = @(
 
 $srcFiles = Get-ChildItem -Path $srcDir -Filter "*.cs" | ForEach-Object { "`"$($_.FullName)`"" }
 $outputExe = Join-Path $binDir "Veronica.Shell.exe"
+Get-Process -Name "Veronica.Shell" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 $icoPath = Join-Path $shellRoot "..\desktop\assets\veronica.ico"
 
 Write-Host "[2/3] Compiling native Microsoft .NET desktop application..." -ForegroundColor Cyan

@@ -249,6 +249,7 @@
         if (pingInterval) clearInterval(pingInterval);
         pingInterval = setInterval(sendPing, 4000);
         queryState();
+        syncStoredCredentials();
         break;
 
       case "pong":
@@ -280,15 +281,33 @@
         }
         break;
 
+      case "tool.result":
+        sfx.confirm();
+        queryState();
+        break;
+
       case "telemetry":
         if (frame.payload) {
           const t = frame.payload.telemetry || frame.payload;
-          if (t.cpu && t.cpu.total_percent !== undefined) {
+          if (t.cpu_percent !== undefined) {
+            miniCpuVal.textContent = `${Math.round(t.cpu_percent)}%`;
+          } else if (t.cpu && t.cpu.total_percent !== undefined) {
             miniCpuVal.textContent = `${Math.round(t.cpu.total_percent)}%`;
           }
-          if (t.memory && t.memory.percent !== undefined) {
+          if (t.ram_percent !== undefined) {
+            miniRamVal.textContent = `${Math.round(t.ram_percent)}%`;
+          } else if (t.memory && t.memory.percent !== undefined) {
             miniRamVal.textContent = `${Math.round(t.memory.percent)}%`;
           }
+          if (frame.payload.provider) {
+            miniEngineBadge.textContent = frame.payload.provider.toUpperCase();
+          }
+        }
+        break;
+
+      case "status":
+        if (frame.payload && frame.payload.provider) {
+          miniEngineBadge.textContent = frame.payload.provider.toUpperCase();
         }
         break;
 
@@ -358,7 +377,7 @@
     miniUserText.style.display = "block";
     miniUserText.textContent = text;
     streamedText = "";
-    miniVeronicaText.textContent = "Processing...";
+    miniVeronicaText.innerHTML = `<span class="thinking-dots"><span>•</span><span>•</span><span>•</span></span>`;
     setStatus("status-thinking", "THINKING");
 
     ws.send(JSON.stringify({
@@ -552,6 +571,43 @@
     }
     window.close();
   });
+
+  // Persistent Microphone Authorization Stream
+  let persistentMicStream = null;
+  async function ensurePersistentMic() {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        if (!persistentMicStream) {
+          persistentMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+      } catch (err) {}
+    }
+  }
+  window.addEventListener("load", ensurePersistentMic);
+  document.addEventListener("click", ensurePersistentMic, { once: true });
+  document.addEventListener("keydown", ensurePersistentMic, { once: true });
+
+  function syncStoredCredentials() {
+    const groq = localStorage.getItem("veronica_groq_key") || "";
+    const openai = localStorage.getItem("veronica_openai_key") || "";
+    const gemini = localStorage.getItem("veronica_gemini_key") || "";
+    const anthropic = localStorage.getItem("veronica_anthropic_key") || "";
+    const voice = localStorage.getItem("veronica_voice") || "en-US-AvaNeural";
+
+    if (ws && isConnected && (groq || openai || gemini || anthropic || voice)) {
+      ws.send(
+        JSON.stringify({
+          v: 1,
+          id: "sync_settings_" + Date.now(),
+          type: "settings.update",
+          payload: {
+            keys: { groq, openai, gemini, anthropic },
+            voice: voice,
+          },
+        })
+      );
+    }
+  }
 
   // Init
   connectWs();

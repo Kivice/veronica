@@ -16,6 +16,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 from websockets.asyncio.server import ServerConnection, serve
@@ -23,6 +24,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
 from .adapters import EchoLlm, LlmAdapter
+from .audit_logger import record_audit_event, setup_veronica_logging
 from .brain import VeronicaBrain
 from .protocol import (
     MAX_FRAME_BYTES,
@@ -64,6 +66,7 @@ def _reject_foreign_origin(ctx: ServiceContext):
                 return None
             if origin in ("null", "file://"):
                 return None
+            record_audit_event("ws.origin_rejected", status="blocked", details={"origin": origin}, risk="high")
             return connection.respond(403, "origin not allowed\n")
         return None
 
@@ -83,6 +86,7 @@ def _make_handler(ctx: ServiceContext):
             if hello.type != "hello" or not hmac.compare_digest(
                 supplied.encode(), ctx.token.encode()
             ):
+                record_audit_event("ws.auth_failed", status="blocked", details={"type": hello.type}, risk="high")
                 await ws.close(POLICY_VIOLATION, "unauthorized")
                 return
         except (asyncio.TimeoutError, ProtocolError, ConnectionClosed):
@@ -125,6 +129,17 @@ def _make_handler(ctx: ServiceContext):
                 if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT_CHARS:
                     await _send(ws, Envelope("error", env.id, {"message": "invalid text"}))
                     continue
+
+                def _on_tool_executed(tool_name: str, result: dict[str, Any]):
+                    try:
+                        asyncio.create_task(
+                            _send(ws, Envelope("tool.result", env.id, {"tool": tool_name, "result": result}))
+                        )
+                    except Exception:
+                        pass
+
+                if hasattr(ctx.llm, "set_tool_callback"):
+                    ctx.llm.set_tool_callback(_on_tool_executed)
 
                 full_reply: list[str] = []
                 async for chunk in ctx.llm.respond(text):
@@ -186,8 +201,12 @@ def _make_handler(ctx: ServiceContext):
 
             elif env.type == "settings.update":
                 keys = env.payload.get("keys", {})
+                is_auto_sync = env.payload.get("source") == "auto_sync"
                 if hasattr(ctx.llm, "update_keys"):
-                    ctx.llm.update_keys(keys)
+                    try:
+                        ctx.llm.update_keys(keys, overwrite_existing=not is_auto_sync)
+                    except TypeError:
+                        ctx.llm.update_keys(keys)
                 voice = env.payload.get("voice")
                 if voice and hasattr(ctx.tts, "set_voice"):
                     ctx.tts.set_voice(voice)
@@ -242,7 +261,7 @@ def _make_handler(ctx: ServiceContext):
                         logger.warning("TTS generation skipped: %s", exc)
 
             elif env.type == "wake_word.detected":
-                logger.info("Wake word detected: %s", env.payload)
+                logger.info("Wake word detected event received")
                 wake_env = Envelope("wake_word.detected", env.id, env.payload)
                 cmd_env = Envelope("window.command", env.id, {"action": "show_mini", "reason": "wake_word"})
                 for client in list(ctx.active_clients):
@@ -253,7 +272,8 @@ def _make_handler(ctx: ServiceContext):
                         pass
 
             elif env.type == "window.command":
-                logger.info("Window command: %s", env.payload)
+                action_name = env.payload.get("action", "unknown") if isinstance(env.payload, dict) else "unknown"
+                logger.info("Window command received: action=%s", action_name)
                 cmd_env = Envelope("window.command", env.id, env.payload)
                 for client in list(ctx.active_clients):
                     try:
@@ -285,14 +305,28 @@ def run_server(ctx: ServiceContext, port: int = 0):
 
 
 async def amain() -> None:
-    token = os.environ.get("VERONICA_TOKEN", "")
+    setup_veronica_logging()
+    token = os.environ.get("VERONICA_TOKEN", "").strip()
     if len(token) < 16:
-        # Generate an ephemeral secure token if not supplied
+        token_file = Path.home() / ".veronica" / "token"
+        if token_file.exists():
+            try:
+                token = token_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+    if len(token) < 16:
         import secrets
         token = secrets.token_hex(24)
+        try:
+            (Path.home() / ".veronica").mkdir(parents=True, exist_ok=True)
+            (Path.home() / ".veronica" / "token").write_text(token, encoding="utf-8")
+        except Exception:
+            pass
         print(f"VERONICA_AUTH_TOKEN={token}", flush=True)
 
     requested_port = int(os.environ.get("VERONICA_PORT", "8765"))
+    parent_pid_str = os.environ.get("VERONICA_PARENT_PID", "").strip()
+    parent_pid = int(parent_pid_str) if parent_pid_str.isdigit() else 0
 
     # Use the real multi-provider brain and real neural TTS engine
     ctx = ServiceContext(
@@ -301,10 +335,25 @@ async def amain() -> None:
         tts=EdgeTtsEngine(voice="en-US-AvaNeural"),
     )
 
+    stop_event = asyncio.Event()
+
+    async def _watch_parent(pid: int) -> None:
+        import psutil
+        while not stop_event.is_set():
+            if not psutil.pid_exists(pid):
+                logger.info("Parent process %d exited; initiating graceful shutdown.", pid)
+                stop_event.set()
+                break
+            await asyncio.sleep(0.5)
+
     async with run_server(ctx, port=requested_port) as server:
         port = server.sockets[0].getsockname()[1]
         print(
             json.dumps({"event": "listening", "host": "127.0.0.1", "port": port, "token": token}),
             flush=True,
         )
-        await server.serve_forever()
+        if parent_pid > 0:
+            asyncio.create_task(_watch_parent(parent_pid))
+            await stop_event.wait()
+        else:
+            await server.serve_forever()

@@ -17,7 +17,7 @@ function startService(token) {
   assert.ok(fs.existsSync(venvPy), `missing venv: run scripts/setup.ps1 (${venvPy})`);
   const child = spawn(venvPy, ["-m", "veronica_voice"], {
     cwd: svc,
-    env: { ...process.env, PYTHONPATH: path.join(svc, "src"), VERONICA_TOKEN: token },
+    env: { ...process.env, PYTHONPATH: path.join(svc, "src"), VERONICA_TOKEN: token, VERONICA_PORT: "0" },
     stdio: ["ignore", "pipe", "inherit"],
   });
   return new Promise((resolve, reject) => {

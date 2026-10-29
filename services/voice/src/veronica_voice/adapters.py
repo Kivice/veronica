@@ -1,11 +1,21 @@
 """Model adapter seams. Real STT/TTS/LLM backends implement these; the core never imports them directly.
 
-Only the LLM seam exists in this foundation. STT and TTS seams are added in roadmap phases 2 and 3,
-when there is a concrete backend to validate the interface against (avoids speculative abstraction).
+This module exposes the abstract LlmAdapter protocol, the lightweight EchoLlm testing stand-in,
+and exports all modular model adapters from the Veronica intelligence engine.
 """
 from __future__ import annotations
 
 from typing import AsyncIterator, Protocol
+
+from .intelligence.adapters import (
+    AnthropicAdapter,
+    BaseModelAdapter,
+    GeminiAdapter,
+    GroqAdapter,
+    OllamaAdapter,
+    OpenAiAdapter,
+    TacticalCoreAdapter,
+)
 
 
 class LlmAdapter(Protocol):
@@ -20,3 +30,16 @@ class EchoLlm:
     async def respond(self, text: str) -> AsyncIterator[str]:
         for word in f"You said: {text}".split(" "):
             yield word + " "
+
+
+__all__ = [
+    "LlmAdapter",
+    "EchoLlm",
+    "BaseModelAdapter",
+    "GroqAdapter",
+    "OpenAiAdapter",
+    "GeminiAdapter",
+    "AnthropicAdapter",
+    "OllamaAdapter",
+    "TacticalCoreAdapter",
+]

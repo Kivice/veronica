@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -10,9 +11,9 @@ using System.Windows.Shapes;
 namespace Veronica.Shell
 {
     /// <summary>
-    /// Pure Native Microsoft WPF Desktop Shell Window.
+    /// Pure Native Microsoft WPF Desktop Shell Window (Mark-V).
     /// Hardware-accelerated DirectX vector rendering with zero browser/Chromium overhead.
-    /// Features: Animated vector Arc Reactor, drag-to-move, live transcript, and telemetry badges.
+    /// Features: Multi-ring vector Arc Reactor, drag-to-move, scrollable multi-turn transcript, Screen Recon, and live telemetry.
     /// </summary>
     public class MiniWindow : Window
     {
@@ -24,10 +25,18 @@ namespace Veronica.Shell
         private Border _statusPill;
         private TextBlock _vitalsText;
         private TextBlock _transcriptText;
+        private ScrollViewer _scrollViewer;
         private TextBox _inputBox;
         private Ellipse _coreCenter;
         private RotateTransform _arcRotate;
         private bool _isListening = false;
+
+        private readonly List<string> _historyLines = new List<string>
+        {
+            "Veronica Mark-V Native WPF Shell active.",
+            "Say \"Hey Veronica\", click the Arc Reactor, or select a tactical directive."
+        };
+        private string _currentStreamedTurn = "";
 
         public MiniWindow(Action<string> onTransmit, Action onToggleListening, Action onMinimizeToTray)
         {
@@ -40,21 +49,16 @@ namespace Veronica.Shell
 
         private void InitializeWpfComponent()
         {
-            Title = "VERONICA // NATIVE SHELL";
-            Width = 450;
-            Height = 280;
+            Title = "VERONICA // MARK-V NATIVE SHELL";
+            Width = 520;
+            Height = 330;
             WindowStyle = WindowStyle.None;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
             Topmost = true;
             ShowInTaskbar = true;
             ResizeMode = ResizeMode.NoResize;
-            WindowStartupLocation = WindowStartupLocation.Manual;
-
-            // Position near bottom-right above system tray
-            Rect workArea = SystemParameters.WorkArea;
-            Left = Math.Max(40, workArea.Right - Width - 20);
-            Top = Math.Max(40, workArea.Bottom - Height - 20);
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
             Loaded += (s, e) =>
             {
@@ -62,14 +66,12 @@ namespace Veronica.Shell
                 Focus();
             };
 
-            // Hide to tray instead of destroying window on close
             Closing += (s, e) =>
             {
                 e.Cancel = true;
                 Hide();
             };
 
-            // Drag to reposition anywhere
             MouseDown += (s, e) =>
             {
                 if (e.ChangedButton == MouseButton.Left)
@@ -78,12 +80,11 @@ namespace Veronica.Shell
                 }
             };
 
-            // Outer Frame Border with Stark Cyan Glow
             var outerBorder = new Border
             {
                 CornerRadius = new CornerRadius(10),
-                Background = new SolidColorBrush(Color.FromArgb(242, 5, 8, 17)), // #050811 with slight translucency
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0, 243, 255)),   // Stark Cyan #00F3FF
+                Background = new SolidColorBrush(Color.FromArgb(245, 5, 8, 17)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0, 243, 255)),
                 BorderThickness = new Thickness(1.5),
                 Padding = new Thickness(10),
                 Effect = new DropShadowEffect
@@ -121,7 +122,7 @@ namespace Veronica.Shell
 
             var titleLabel = new TextBlock
             {
-                Text = "VERONICA // NATIVE SHELL",
+                Text = "VERONICA // MARK-V SHELL",
                 FontFamily = new FontFamily("Segoe UI, Rajdhani"),
                 FontWeight = FontWeights.Bold,
                 FontSize = 12,
@@ -154,7 +155,6 @@ namespace Veronica.Shell
             Grid.SetColumn(titlePanel, 0);
             headerGrid.Children.Add(titlePanel);
 
-            // Tray Minimize Button
             var trayBtn = new Button
             {
                 Content = "🗕 TRAY",
@@ -177,10 +177,9 @@ namespace Veronica.Shell
 
             // 2. Middle Row: Arc Reactor + Live Feed
             var centerGrid = new Grid { Margin = new Thickness(0, 8, 0, 8) };
-            centerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
+            centerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });
             centerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-            // Vector Arc Reactor Canvas (Hardware Accelerated)
             var arcCanvas = new Canvas
             {
                 Width = 84,
@@ -190,7 +189,6 @@ namespace Veronica.Shell
             };
             arcCanvas.MouseDown += (s, e) => _onToggleListening();
 
-            // Outer Glow Ellipse
             var outerGlow = new Ellipse
             {
                 Width = 80,
@@ -201,7 +199,6 @@ namespace Veronica.Shell
             };
             arcCanvas.Children.Add(outerGlow);
 
-            // Rotating Dashed Ring
             _arcRotate = new RotateTransform(0, 42, 42);
             var dashedRing = new Ellipse
             {
@@ -215,7 +212,6 @@ namespace Veronica.Shell
             };
             arcCanvas.Children.Add(dashedRing);
 
-            // Center Plasma Core
             _coreCenter = new Ellipse
             {
                 Width = 24,
@@ -231,7 +227,6 @@ namespace Veronica.Shell
             };
             arcCanvas.Children.Add(_coreCenter);
 
-            // Rotation Storyboard
             var rotateAnim = new DoubleAnimation
             {
                 From = 0,
@@ -244,14 +239,13 @@ namespace Veronica.Shell
             Grid.SetColumn(arcCanvas, 0);
             centerGrid.Children.Add(arcCanvas);
 
-            // Feed Panel (Right)
             var feedPanel = new Grid();
             feedPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             feedPanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
             _vitalsText = new TextBlock
             {
-                Text = "CPU: --%   RAM: --%   SEC: ACTIVE",
+                Text = "CPU: --%   RAM: --%   CORE: TACTICAL   SEC: DPAPI",
                 FontFamily = new FontFamily("Consolas, Segoe UI"),
                 FontSize = 10,
                 Foreground = new SolidColorBrush(Color.FromRgb(112, 144, 176)),
@@ -260,7 +254,7 @@ namespace Veronica.Shell
             Grid.SetRow(_vitalsText, 0);
             feedPanel.Children.Add(_vitalsText);
 
-            var scroll = new ScrollViewer
+            _scrollViewer = new ScrollViewer
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -268,16 +262,16 @@ namespace Veronica.Shell
             };
             _transcriptText = new TextBlock
             {
-                Text = "Native .NET Shell active.\nSay \"Hey Veronica\" or type below.",
+                Text = string.Join("\n", _historyLines),
                 FontFamily = new FontFamily("Segoe UI"),
                 FontSize = 11,
                 Foreground = new SolidColorBrush(Color.FromRgb(226, 241, 255)),
                 TextWrapping = TextWrapping.Wrap,
                 LineHeight = 16
             };
-            scroll.Content = _transcriptText;
-            Grid.SetRow(scroll, 1);
-            feedPanel.Children.Add(scroll);
+            _scrollViewer.Content = _transcriptText;
+            Grid.SetRow(_scrollViewer, 1);
+            feedPanel.Children.Add(_scrollViewer);
 
             Grid.SetColumn(feedPanel, 1);
             centerGrid.Children.Add(feedPanel);
@@ -292,7 +286,7 @@ namespace Veronica.Shell
                 Margin = new Thickness(0, 0, 0, 6)
             };
 
-            string[] chips = { "⚡ Vitals", "🎯 Focus", "💻 Dev Macro", "🔒 Security" };
+            string[] chips = { "⚡ Vitals", "🎯 Focus", "💻 Dev Macro", "👁️ Screen", "🌐 Network", "🔒 Security" };
             foreach (var chip in chips)
             {
                 var btn = new Button
@@ -305,8 +299,8 @@ namespace Veronica.Shell
                     Background = new SolidColorBrush(Color.FromArgb(25, 0, 119, 255)),
                     BorderBrush = new SolidColorBrush(Color.FromArgb(70, 0, 243, 255)),
                     BorderThickness = new Thickness(1),
-                    Padding = new Thickness(8, 2, 8, 2),
-                    Margin = new Thickness(0, 0, 6, 0),
+                    Padding = new Thickness(7, 2, 7, 2),
+                    Margin = new Thickness(0, 0, 5, 0),
                     Cursor = Cursors.Hand
                 };
                 string query = chip.Substring(2).Trim();
@@ -315,6 +309,8 @@ namespace Veronica.Shell
                     if (query == "Vitals") _onTransmit("Check system vitals");
                     else if (query == "Focus") _onTransmit("Deploy focus mode");
                     else if (query == "Dev Macro") _onTransmit("Deploy dev workspace macro");
+                    else if (query == "Screen") _onTransmit("__SCREEN_RECON__");
+                    else if (query == "Network") _onTransmit("Check network status and local IP");
                     else if (query == "Security") _onTransmit("Check security protocols and encryption status");
                 };
                 chipsPanel.Children.Add(btn);
@@ -376,11 +372,55 @@ namespace Veronica.Shell
             string text = _inputBox.Text.Trim();
             if (!string.IsNullOrEmpty(text))
             {
-                _transcriptText.Text = "You: " + text + "\nVeronica: Thinking...";
                 _inputBox.Text = string.Empty;
-                SetStatus("THINKING", Color.FromRgb(112, 180, 255));
                 _onTransmit(text);
             }
+        }
+
+        public void BeginUserTurn(string userText)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _historyLines.Add("");
+                _historyLines.Add("You: " + userText);
+                while (_historyLines.Count > 36) _historyLines.RemoveAt(0);
+                _currentStreamedTurn = "";
+                RenderTranscript("Veronica: Thinking...");
+                SetStatus("THINKING", Color.FromRgb(112, 180, 255));
+            });
+        }
+
+        public void AppendResponseDelta(string delta)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _currentStreamedTurn += delta;
+                RenderTranscript("Veronica: " + _currentStreamedTurn);
+            });
+        }
+
+        public void FinalizeResponseTurn()
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (!string.IsNullOrWhiteSpace(_currentStreamedTurn))
+                {
+                    _historyLines.Add("Veronica: " + _currentStreamedTurn.Trim());
+                    _currentStreamedTurn = "";
+                    RenderTranscript(null);
+                }
+            });
+        }
+
+        private void RenderTranscript(string activeLine)
+        {
+            var all = new List<string>(_historyLines);
+            if (!string.IsNullOrEmpty(activeLine))
+            {
+                all.Add(activeLine);
+            }
+            _transcriptText.Text = string.Join("\n", all);
+            _scrollViewer.ScrollToEnd();
         }
 
         public void SetStatus(string label, Color color)
@@ -393,34 +433,15 @@ namespace Veronica.Shell
             });
         }
 
-        public void UpdateTelemetry(double cpuPercent, double ramPercent)
+        public void UpdateTelemetry(double cpuPercent, double ramPercent, string provider = "Tactical")
         {
             Dispatcher.Invoke(() =>
             {
-                _vitalsText.Text = string.Format("CPU: {0:F0}%   RAM: {1:F0}%   SEC: ACTIVE", cpuPercent, ramPercent);
-            });
-        }
-
-        public void UpdateTranscript(string userText, string veronicaReply)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                if (!string.IsNullOrEmpty(userText))
-                {
-                    _transcriptText.Text = "You: " + userText + "\nVeronica: " + veronicaReply;
-                }
-                else
-                {
-                    _transcriptText.Text = "Veronica: " + veronicaReply;
-                }
-            });
-        }
-
-        public void AppendResponseDelta(string delta)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                _transcriptText.Text += delta;
+                string shortProv = provider.Contains("Groq") ? "GROQ" :
+                                   provider.Contains("OpenAI") ? "GPT-4O" :
+                                   provider.Contains("Gemini") ? "GEMINI" :
+                                   provider.Contains("Anthropic") ? "CLAUDE" : "TACTICAL";
+                _vitalsText.Text = string.Format("CPU: {0:F0}%   RAM: {1:F0}%   CORE: {2}   SEC: DPAPI", cpuPercent, ramPercent, shortProv);
             });
         }
 

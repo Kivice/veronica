@@ -2,7 +2,7 @@
 
 > **Veronica**: Stark Industries-inspired tactical personal AI desktop agent with real-time neural speech synthesis, hardware telemetry monitoring, desktop tool execution, multi-model cloud fallbacks, and a high-tech sci-fi HUD.
 
-![Veronica Mark-IV](https://img.shields.io/badge/Architecture-Stark_Tactical_HUD-00f3ff?style=for-the-badge)
+![Veronica Mark-V](https://img.shields.io/badge/Architecture-Stark_Tactical_HUD_Mark_V-00f3ff?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Fully_Operational-00ff88?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.13-blue?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Platform-Windows_11-purple?style=for-the-badge)
@@ -16,21 +16,23 @@
 2. **Real Expressive Neural Speech (Edge TTS)**:
    - Zero-key, high-fidelity neural audio streaming (`Ava`, `Jenny`, `Sonia`, `Guy`, `Christopher`).
 3. **Multi-Model Intelligence Pipeline with Cloud Fallbacks**:
+   - **Google Gemini** (`gemini-3-flash-preview` / `gemini-2.5-flash` / `gemini-2.5-pro` with thinking-block filtering & live model auto-discovery).
    - **Groq Cloud** (`llama-3.3-70b-versatile` / `llama-3.1-8b-instant` — ultra-fast ~400 tok/sec).
    - **OpenAI Cloud** (`gpt-4o` / `gpt-4o-mini`).
-   - **Google Gemini** (`gemini-2.0-flash`).
    - **Anthropic Claude** (`claude-3-5-sonnet`).
    - **Local Ollama** (`llama3.2`).
    - **Veronica Tactical Offline Core**: Zero-key offline engine with natural language intent detection, proactive personality, and instant desktop tool execution.
-4. **Desktop Automation & Tool Matrix**:
-   - **Live Hardware Vitals**: Real-time CPU per-core load, RAM utilization, battery charging state, disk headroom, and top memory-consuming processes.
-   - **Quick Deploy App Launcher**: Launch VS Code, Windows Terminal, Task Manager, Calculator, Chrome, Notepad, or Spotify with one click or a voice command.
-   - **Terminal Execution**: Run PowerShell commands directly through Veronica's command drawer.
-   - **OS Media & Volume Control**: Volume up/down, mute, and play/pause via Windows virtual key codes.
-   - **Persistent Tactical Memory**: Save, query, and clear notes stored in `~/.veronica/memory.json`.
-   - **Web Recon**: Open targeted search queries directly in your browser.
-5. **Speech Input & Push-to-Talk**:
-   - Hold **[SPACEBAR]** or click the central glowing Mic button to speak.
+4. **Desktop Automation, IoT & Security Matrix**:
+   - **Live Hardware & Network Vitals**: Real-time CPU per-core load, RAM utilization, battery charging state, disk headroom, local IP & network throughput, and top memory-consuming processes.
+   - **App Launcher & Graceful Process Terminator**: Launch or close (`WM_CLOSE` + process tree cleanup) VS Code, Windows Terminal, Task Manager, Calculator, Chrome, Notepad, or Spotify with voice or text directives.
+   - **Windows CoreAudio Master Volume & Media Control**: Exact `0–100%` scalar volume control (`"set volume to 70%"`, `"volume increase"`, `"volume decrease"`, `"mute"`) via Windows `IAudioEndpointVolume` COM + media playback keys.
+   - **Local IoT & Smart Home Security Bridge**: Control Home Assistant (`HA_URL` / `HA_TOKEN`), Shelly relays, and WLED strips with **RFC1918 Private-LAN Anti-SSRF Enforcement** and a **Physical Lock Confirmation Gate** (`confirm=True` required for `unlock`/`disarm`).
+   - **Structured Operational & Security Audit Logging**: Automatic secret-redacted logs (`~/.veronica/veronica.log`) and tamper-evident JSONL security audit trail (`~/.veronica/audit.jsonl`).
+   - **Window & Clipboard Manager**: List or focus active desktop windows (`window_manager`) and read/write the Windows clipboard (`clipboard_tool`).
+   - **Tactical Timers & Screen Recon**: Arm countdown timers (`timer_reminder`) and perform instant optical screen reconnaissance (`screen.analyze`).
+   - **SQLite + FTS5 Persistent Tactical Memory**: Full-text indexed memory (`~/.veronica/memory.db` + `memory.json`) with instant recall and secure `VACUUM` wipe.
+5. **Native .NET Desktop Shells (Zero Chromium Overhead)**:
+   - **PowerShell WinForms Shell** (`apps/shell/veronica.ps1`) and **Native WPF Shell** (`apps/shell/bin/Veronica.Shell.exe`): Counter-rotating vector Arc Reactor, real neural MP3 TTS playback (`winmm`) with SAPI fallback & barge-in, native Windows Speech Recognition (`"Hey Veronica"` + free-form dictation), and auto-managed Voice Core lifecycle.
 
 ---
 

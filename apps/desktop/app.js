@@ -12,6 +12,10 @@
   const urlParams = new URLSearchParams(window.location.search);
   const WS_PORT = urlParams.get("port") || localStorage.getItem("veronica_port") || "8765";
   const WS_TOKEN = urlParams.get("token") || localStorage.getItem("veronica_token") || "";
+  if (WS_TOKEN) {
+    localStorage.setItem("veronica_token", WS_TOKEN);
+    localStorage.setItem("veronica_port", WS_PORT);
+  }
   let wsUrl = `ws://127.0.0.1:${WS_PORT}`;
 
   let ws = null;
@@ -408,6 +412,8 @@
         if (pingInterval) clearInterval(pingInterval);
         pingInterval = setInterval(sendPing, 4000);
         queryState();
+        syncStoredCredentials();
+        loadMemory();
         break;
 
       case "pong":
@@ -441,11 +447,75 @@
 
       case "tool.result":
         sfx.confirm();
-        toolExecutionTag.style.display = "inline-block";
-        toolExecutionTag.textContent = `Executed: ${frame.payload.tool}`;
-        if (frame.payload.tool === "run_command" && frame.payload.result) {
-          const res = frame.payload.result;
+        toolExecutionTag.style.display = "inline-flex";
+        const toolBadge = document.createElement("span");
+        toolBadge.className = "tool-badge-item";
+        const toolName = frame.payload.tool || "";
+        const res = frame.payload.result || {};
+
+        if (toolName === "launch_application" || toolName.startsWith("launch:")) {
+          const rawApp = res.app || toolName.split(":")[1] || "App";
+          const display = rawApp.toLowerCase() === "vscode" ? "VS Code" : rawApp.charAt(0).toUpperCase() + rawApp.slice(1);
+          toolBadge.textContent = res.status === "error" ? `⚠️ ${res.message || display}` : `🚀 Launched ${display}`;
+        } else if (toolName === "close_application" || toolName.startsWith("close:")) {
+          const rawApp = res.app || toolName.split(":")[1] || "App";
+          const display = rawApp.toLowerCase() === "vscode" ? "VS Code" : rawApp.charAt(0).toUpperCase() + rawApp.slice(1);
+          toolBadge.textContent = res.status === "success" ? `🛑 Closed ${display}` : `⚠️ ${res.message || display}`;
+        } else if (toolName === "window_manager") {
+          toolBadge.textContent = `🪟 Windows (${res.action || "list"})`;
+        } else if (toolName === "timer_reminder") {
+          toolBadge.textContent = `⏱️ Timer (${res.label || res.action || "active"})`;
+        } else if (toolName === "clipboard_tool") {
+          toolBadge.textContent = `📋 Clipboard`;
+        } else if (toolName === "network_status") {
+          toolBadge.textContent = `🌐 Network (${res.local_ip || "OK"})`;
+        } else if (toolName === "media_control" || toolName.startsWith("media:")) {
+          const act = res.action || toolName.split(":")[1] || "playback";
+          const pctSuffix = res.volume_percent !== undefined ? ` (${res.volume_percent}%)` : "";
+          const actMap = {
+            play: "Playing Audio",
+            play_pause: "Playback",
+            pause: "Paused",
+            volume_up: `Volume Up${pctSuffix}`,
+            volume_down: `Volume Down${pctSuffix}`,
+            set_volume: `Volume ${res.volume_percent !== undefined ? res.volume_percent + "%" : "Set"}`,
+            mute: "Muted",
+            next: "Next Track",
+            prev: "Prev Track"
+          };
+          toolBadge.textContent = `🎵 ${actMap[act] || act}`;
+        } else if (toolName === "iot_control" || toolName.startsWith("iot:")) {
+          const iAct = res.action || "status";
+          const iTgt = res.target ? ` · ${res.target}` : "";
+          toolBadge.textContent = res.status === "confirmation_required"
+            ? `🔒 Security Gate${iTgt}`
+            : `🏠 IoT (${iAct}${iTgt})`;
+        } else if (toolName === "get_veronica_logs" || toolName === "veronica_logs") {
+          const aCnt = Array.isArray(res.recent_audit_events) ? res.recent_audit_events.length : 0;
+          toolBadge.textContent = `📜 Audit Logs (${aCnt} events)`;
+          if (cmdOutput && Array.isArray(res.recent_logs)) {
+            cmdOutput.textContent = res.recent_logs.slice(-8).join("\n");
+          }
+        } else if (toolName === "telemetry") {
+          toolBadge.textContent = `⚡ Telemetry Synced`;
+        } else if (toolName === "workspace_macro") {
+          toolBadge.textContent = `🎯 Workspace Macro`;
+        } else if (toolName === "search_web") {
+          toolBadge.textContent = `🌐 Web Search`;
+        } else {
+          toolBadge.textContent = `⚡ ${toolName}`;
+        }
+        toolExecutionTag.appendChild(toolBadge);
+
+        if (toolName === "run_command" && res) {
           cmdOutput.textContent = res.stdout || res.stderr || res.message || "Executed with code " + res.exit_code;
+        }
+        if (toolName === "memory" && res) {
+          if (res.notes !== undefined) {
+            renderMemoryList(res.notes);
+          } else {
+            loadMemory();
+          }
         }
         queryState();
         break;
@@ -462,6 +532,9 @@
       case "status":
         if (frame.payload && frame.payload.message) {
           speechState.textContent = frame.payload.message.toUpperCase();
+        }
+        if (frame.payload && frame.payload.provider) {
+          engineLabel.textContent = frame.payload.provider.toUpperCase();
         }
         break;
 
@@ -492,8 +565,24 @@
     }
   }
 
-  // --- Neural Speech Audio Playback ---
+  // --- Neural Speech Audio Playback + Barge-In ---
+  function stopActiveAudio() {
+    if (activeAudio) {
+      try {
+        activeAudio.pause();
+        activeAudio.src = "";
+      } catch (e) {}
+      activeAudio = null;
+    }
+    if (window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
+    }
+  }
+
   function playNeuralAudio(base64Chunks) {
+    stopActiveAudio();
     initAudioContext();
     setStatus("status-speaking", "SPEAKING");
 
@@ -507,6 +596,7 @@
     const blob = new Blob([bytes.buffer], { type: "audio/mp3" });
     const audioUrl = URL.createObjectURL(blob);
     const audio = new Audio(audioUrl);
+    activeAudio = audio;
 
     if (audioCtx && analyser) {
       try {
@@ -519,16 +609,19 @@
     }
 
     audio.onended = function () {
+      if (activeAudio === audio) activeAudio = null;
       setStatus("status-standby", "STANDBY");
       URL.revokeObjectURL(audioUrl);
     };
 
     audio.onerror = function () {
+      if (activeAudio === audio) activeAudio = null;
       setStatus("status-standby", "STANDBY");
     };
 
     audio.play().catch(function (e) {
       console.warn("Auto-play blocked or audio error:", e);
+      if (activeAudio === audio) activeAudio = null;
       setStatus("status-standby", "STANDBY");
     });
   }
@@ -578,6 +671,25 @@
       });
     }
   }
+
+  // --- Persistent Microphone Authorization Stream ---
+  let persistentMicStream = null;
+  async function ensurePersistentMic() {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        if (!persistentMicStream) {
+          persistentMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          console.log("[VERONICA] Microphone authorized persistently.");
+        }
+      } catch (err) {
+        console.warn("[VERONICA] Microphone authorization notice:", err);
+      }
+    }
+  }
+
+  window.addEventListener("load", ensurePersistentMic);
+  document.addEventListener("click", ensurePersistentMic, { once: true });
+  document.addEventListener("keydown", ensurePersistentMic, { once: true });
 
   // --- Voice Input (STT via Web Speech API) ---
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -734,8 +846,12 @@
   window.addEventListener("keydown", function (e) {
     if (e.code === "Space" && document.activeElement !== chatInput && document.activeElement !== cmdInput) {
       e.preventDefault();
+      if (e.repeat) return;
+      stopActiveAudio();
       if (!isListening && recognition) {
-        recognition.start();
+        try {
+          recognition.start();
+        } catch (err) {}
       }
     }
   });
@@ -823,14 +939,44 @@
     });
   });
 
-  // --- Chat Message Submission ---
+  // --- Chat Message Submission & Directive Rendering ---
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function appendUserDirective(text) {
+    if (!transcriptBox) return;
+    const existingDirective = transcriptBox.querySelector(".user-directive-row");
+    if (existingDirective) {
+      existingDirective.remove();
+    }
+    const row = document.createElement("div");
+    row.className = "user-directive-row";
+    row.innerHTML = `<span class="user-directive-tag">DIRECTIVE:</span><span class="user-directive-text">${escapeHtml(text)}</span>`;
+    const veronicaMsg = transcriptBox.querySelector(".veronica-message");
+    if (veronicaMsg) {
+      transcriptBox.insertBefore(row, veronicaMsg);
+    } else {
+      transcriptBox.appendChild(row);
+    }
+    transcriptBox.scrollTop = transcriptBox.scrollHeight;
+  }
+
   function sendUserMessage(text) {
     if (!text.trim() || !ws || !isConnected) return;
 
+    stopActiveAudio();
     initAudioContext();
+    appendUserDirective(text.trim());
+    toolExecutionTag.innerHTML = "";
     toolExecutionTag.style.display = "none";
     currentStreamedText = "";
-    veronicaText.textContent = "Analyzing directive...";
+    veronicaText.innerHTML = `<span class="thinking-dots"><span>•</span><span>•</span><span>•</span></span>`;
     incomingAudioChunks = [];
 
     const frame = {
@@ -838,7 +984,7 @@
       id: "msg_" + Date.now(),
       type: "text.input",
       payload: {
-        text: text,
+        text: text.trim(),
         synthesize: !audioMuted,
       },
     };
@@ -889,6 +1035,7 @@
   // Audio Output Toggle (Veronica's voice)
   muteAudioBtn.addEventListener("click", function () {
     audioMuted = !audioMuted;
+    if (audioMuted) stopActiveAudio();
     muteAudioIcon.textContent = audioMuted ? "🔇" : "🔊";
     muteAudioBtn.classList.toggle("active", !audioMuted);
     if (!audioMuted) sfx.blip();
@@ -911,6 +1058,48 @@
   });
 
   // Memory Panel
+  function renderMemoryList(notes) {
+    if (!memoryList) return;
+    memoryList.innerHTML = "";
+    if (!notes || Object.keys(notes).length === 0) {
+      memoryList.innerHTML = `<div class="memory-empty-state">NO STORED MEMORIES</div>`;
+      return;
+    }
+
+    Object.entries(notes).forEach(function ([key, val]) {
+      const row = document.createElement("div");
+      row.className = "memory-item-row";
+
+      const infoDiv = document.createElement("div");
+      infoDiv.className = "memory-content";
+
+      const kSpan = document.createElement("span");
+      kSpan.className = "memory-key";
+      kSpan.textContent = `${key}:`;
+
+      const vSpan = document.createElement("span");
+      vSpan.className = "memory-val";
+      vSpan.textContent = typeof val === "object" ? JSON.stringify(val) : String(val);
+
+      infoDiv.appendChild(kSpan);
+      infoDiv.appendChild(vSpan);
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "memory-del-btn";
+      delBtn.title = `Delete memory '${key}'`;
+      delBtn.textContent = "✕";
+      delBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        sfx.blip();
+        executeTool("memory", { action: "delete", key: key });
+      });
+
+      row.appendChild(infoDiv);
+      row.appendChild(delBtn);
+      memoryList.appendChild(row);
+    });
+  }
+
   saveMemoryBtn.addEventListener("click", function () {
     const k = memoryKeyInput.value.trim();
     const v = memoryValInput.value.trim();
@@ -918,12 +1107,34 @@
       executeTool("memory", { action: "set", key: k, value: v });
       memoryKeyInput.value = "";
       memoryValInput.value = "";
-      setTimeout(loadMemory, 500);
     }
   });
 
   function loadMemory() {
     executeTool("memory", { action: "list" });
+  }
+
+  function syncStoredCredentials() {
+    const groq = localStorage.getItem("veronica_groq_key") || "";
+    const openai = localStorage.getItem("veronica_openai_key") || "";
+    const gemini = localStorage.getItem("veronica_gemini_key") || "";
+    const anthropic = localStorage.getItem("veronica_anthropic_key") || "";
+    const voice = localStorage.getItem("veronica_voice") || "en-US-AvaNeural";
+
+    if (ws && isConnected && (groq || openai || gemini || anthropic || voice)) {
+      ws.send(
+        JSON.stringify({
+          v: 1,
+          id: "sync_settings_" + Date.now(),
+          type: "settings.update",
+          payload: {
+            keys: { groq, openai, gemini, anthropic },
+            voice: voice,
+            source: "auto_sync",
+          },
+        })
+      );
+    }
   }
 
   // Settings Modal Handlers
@@ -961,6 +1172,7 @@
           payload: {
             keys: { groq, openai, gemini, anthropic },
             voice: voice,
+            source: "user_save",
           },
         })
       );

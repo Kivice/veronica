@@ -380,3 +380,24 @@ body.mini-hud-body::after {
   50% { transform: scale(1.4); opacity: 1; }
   100% { transform: scale(0.8); opacity: 0.3; }
 }
+
+.thinking-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  color: var(--cyan-plasma);
+}
+
+.thinking-dots span {
+  font-size: 1rem;
+  animation: miniPulseDot 1.2s infinite ease-in-out both;
+}
+
+.thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+.thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0s; }
+
+@keyframes miniPulseDot {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); }
+  40% { opacity: 1; transform: scale(1.2); }
+}
