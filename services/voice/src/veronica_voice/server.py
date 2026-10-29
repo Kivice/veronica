@@ -74,7 +74,10 @@ def _reject_foreign_origin(ctx: ServiceContext):
 
 
 async def _send(ws: ServerConnection, env: Envelope) -> None:
-    await ws.send(env.to_json())
+    try:
+        await ws.send(env.to_json())
+    except (ConnectionClosed, ConnectionResetError, OSError):
+        pass
 
 
 def _make_handler(ctx: ServiceContext):
@@ -287,6 +290,8 @@ def _make_handler(ctx: ServiceContext):
     async def handler(ws: ServerConnection) -> None:
         try:
             await _handle_connection(ws)
+        except (ConnectionClosed, ConnectionResetError, OSError):
+            pass
         finally:
             ctx.active_clients.discard(ws)
 
