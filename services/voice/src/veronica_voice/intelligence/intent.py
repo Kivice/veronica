@@ -10,6 +10,9 @@ from typing import Any, Callable, Optional
 import psutil
 
 from ..tools import (
+    SITE_SHORTCUTS,
+    app_interact,
+    browser_agent,
     clipboard_tool,
     close_application,
     get_network_status,
@@ -70,6 +73,7 @@ NON_APP_TARGETS = frozenset({
     "playback", "windows", "window", "timer", "timers", "clipboard", "network", "memory", "memories",
     "it", "that", "this", "up", "down", "all", "everything", "veronica", "volume", "log", "logs",
     "audit", "iot", "light", "lights", "lamp", "plug", "switch", "door", "lock", "garage",
+    "tab", "tabs", "page", "note", "notes", "website", "site", "url", "web", "new",
 })
 
 VOLUME_SET_RE = re.compile(
@@ -214,8 +218,11 @@ class IntentRouter:
                 raw_query=clean,
             )
 
-        # 7. Web Search
-        search_match = re.search(r"(?:search\s+for|search\s+web\s+for|google|look\s+up)\s+(.+?)(?:\s+(?:and|then|,)\s+|$)", lower)
+        # 7. Web Search & Browsing
+        search_match = re.search(
+            r"(?:search\s+(?:the\s+)?(?:web\s+)?(?:for|on)|browse\s+(?:for|to)?|google|look\s+up|go\s+to|navigate\s+to)\s+(.+?)(?:\s+(?:and|then|,)\s+|$)",
+            lower,
+        )
         if search_match:
             q = search_match.group(1).strip()
             if q and len(q) > 1 and q not in ("music", "spotify", "code", "it"):
@@ -226,12 +233,20 @@ class IntentRouter:
                     params={"query": q},
                 )
 
-        # 8. Directive Actions (App Launch / Close / Media / Network / Windows / Clipboard / Timers / IoT / Logs)
+        # 8. Directive Actions (App Launch / Close / Core App Interact / Browsing / Media / Network / Windows / Clipboard / Timers / IoT / Logs)
         has_launch = bool(LAUNCH_VERB_RE.search(lower))
         has_close = bool(CLOSE_VERB_RE.search(lower))
         has_media = any(w in lower for w in ("play", "pause", "volume", "louder", "quieter", "softer", "mute", "unmute", "skip", "track", "song")) or bool(
             VOLUME_SET_RE.search(lower) or VOLUME_UP_RE.search(lower) or VOLUME_DOWN_RE.search(lower)
         )
+        has_browse = any(w in lower for w in (
+            "browse", "go to ", "navigate to ", "youtube", "github", "reddit", "wikipedia",
+            "new tab", "close tab", "reopen tab", "next tab", "previous tab", "refresh page", "reload page",
+        ))
+        has_core_app = any(w in lower for w in (
+            "in notepad", "write a note", "create a note", "on spotify", "search spotify", "in vscode", "in vs code",
+            "find files", "search files", "downloads folder", "documents folder", "desktop folder",
+        ))
         has_iot = any(w in lower for w in (
             "iot", "smart home", "smart device", "turn on ", "turn off ", "switch on ", "switch off ",
             "toggle ", "lock the ", "unlock the ", "front door", "garage door",
@@ -244,7 +259,7 @@ class IntentRouter:
             "focus window", "minimize ", "switch to ", "bring up ", "clipboard", "set a timer", "set timer",
             "cancel timer", "check timer", "list timer", "wipe memory", "forget ",
         ))
-        if has_launch or has_close or has_media or has_iot or has_logs or has_extra:
+        if has_launch or has_close or has_media or has_browse or has_core_app or has_iot or has_logs or has_extra:
             return IntentAnalysis(
                 intent=IntentType.DIRECTIVE_ACTION,
                 confidence=0.90,
@@ -292,6 +307,80 @@ class IntentRouter:
         summaries: list[str] = []
         tools_run: list[str] = []
 
+        # 0. Core Application Deep Interactions (Notepad write, Spotify track search, VS Code path, File search)
+        notepad_write_m = re.search(
+            r"(?:(?:open\s+notepad\s+and\s+(?:write|type))|(?:(?:write|type)\s+(?:in|into)\s+notepad(?:\s+saying|\s+that)?)|(?:(?:write|create|make)\s+a\s+note(?:\s+in\s+notepad)?(?:\s+saying|\s+that|\s*:)?))\s+(.+)$",
+            clean,
+            re.IGNORECASE,
+        )
+        spotify_song_m = re.search(
+            r"(?:play\s+(.+?)\s+on\s+spotify|search\s+spotify\s+for\s+(.+?))$",
+            clean,
+            re.IGNORECASE,
+        )
+        yt_play_m = re.search(
+            r"(?:(?:play|watch)\s+(.+?)\s+on\s+(?:youtube|yt)|search\s+(?:youtube|yt)\s+for\s+(.+?))$",
+            clean,
+            re.IGNORECASE,
+        )
+        vscode_path_m = re.search(
+            r"open\s+(.+?)\s+in\s+(?:vscode|vs\s+code|visual\s+studio\s+code)$",
+            clean,
+            re.IGNORECASE,
+        )
+        file_search_m = re.search(
+            r"(?:find|search\s+(?:my\s+)?)\s*files?\s+(?:named|called|matching|for)\s+(.+)$",
+            clean,
+            re.IGNORECASE,
+        )
+
+        handled_apps: set[str] = set()
+        if notepad_write_m:
+            note_txt = notepad_write_m.group(1).strip().strip("\"'")
+            ares = app_interact("notepad", "write_note", content=note_txt)
+            summaries.append(ares.get("message", f"Wrote '{note_txt[:40]}' in Notepad"))
+            tools_run.append("app_interact:notepad")
+            handled_apps.add("notepad")
+            if tool_callback:
+                tool_callback("app_interact", ares)
+
+        if spotify_song_m:
+            song_q = (spotify_song_m.group(1) or spotify_song_m.group(2) or "").strip()
+            if song_q and song_q.lower() not in ("music", "songs", "tracks", "something"):
+                ares = app_interact("spotify", "search_and_play", content=song_q)
+                summaries.append(ares.get("message", f"Playing '{song_q}' on Spotify"))
+                tools_run.append(f"app_interact:spotify:{song_q}")
+                handled_apps.add("spotify")
+                if tool_callback:
+                    tool_callback("app_interact", ares)
+
+        if yt_play_m:
+            yt_q = (yt_play_m.group(1) or yt_play_m.group(2) or "").strip()
+            bres = browser_agent("play_youtube", query=yt_q)
+            summaries.append(bres.get("message", f"Playing '{yt_q}' on YouTube"))
+            tools_run.append(f"browser:play_youtube:{yt_q}")
+            handled_apps.add("youtube")
+            if tool_callback:
+                tool_callback("browser_agent", bres)
+
+        if vscode_path_m:
+            v_path = vscode_path_m.group(1).strip().strip("\"'")
+            ares = app_interact("vscode", "open_path", target=v_path)
+            summaries.append(ares.get("message", f"Opened '{v_path}' in VS Code"))
+            tools_run.append("app_interact:vscode")
+            handled_apps.add("vscode")
+            if tool_callback:
+                tool_callback("app_interact", ares)
+
+        if file_search_m:
+            fq = file_search_m.group(1).strip().strip("\"'")
+            ares = app_interact("explorer", "search_files", target=fq)
+            summaries.append(ares.get("message", f"Searched local files for '{fq}'"))
+            tools_run.append(f"app_interact:search_files:{fq}")
+            handled_apps.add("explorer")
+            if tool_callback:
+                tool_callback("app_interact", ares)
+
         # 1a. Close / Quit Applications (handled before launch so "close X and open Y" works cleanly)
         close_verb_pat = r"\b(?:force\s+close|force\s+quit|force\s+kill|close|quit|exit|kill|terminate|shut\s*down)"
         force_close = bool(re.search(r"\bforce\s+(?:close|quit|kill)\b", lower))
@@ -311,17 +400,17 @@ class IntentRouter:
         launch_verb_pat = r"\b(?:open|launch|start|run|pull\s+up|fire\s+up|deploy)"
         app_targets = [
             a for a in self._extract_app_targets(lower, launch_verb_pat)
-            if a not in close_targets
+            if a not in close_targets and a not in handled_apps
         ]
-        # Implicit Spotify launch on "play spotify"
-        if "spotify" in lower and "play" in lower and "spotify" not in app_targets and "spotify" not in close_targets:
+        # Implicit Spotify launch on "play spotify" (when not handled by specific song search)
+        if "spotify" in lower and "play" in lower and "spotify" not in app_targets and "spotify" not in close_targets and "spotify" not in handled_apps:
             app_targets.append("spotify")
 
         for app in app_targets:
             res = launch_application(app)
             name = _friendly_app_name(app)
             if res.get("status") == "success":
-                summaries.append(f"Launched {name}")
+                summaries.append(res.get("message") if res.get("url") else f"Launched {name}")
             else:
                 summaries.append(res.get("message") or f"Could not find {name}")
             tools_run.append(f"launch:{app}")
@@ -329,11 +418,13 @@ class IntentRouter:
                 tool_callback("launch_application", {**res, "app": name})
 
         # 2. Media Controls
-        wants_play = any(w in lower for w in (
-            "play music", "play tracks", "play song", "put some music on", "put on music",
-            "start music", "resume music", "play audio", "start playback", "resume playback",
-        )) or (
-            bool(re.search(r"\bplay\b", lower)) and not any(w in lower for w in ("game", "youtube", "video", "role"))
+        wants_play = "spotify" not in handled_apps and "youtube" not in handled_apps and (
+            any(w in lower for w in (
+                "play music", "play tracks", "play song", "put some music on", "put on music",
+                "start music", "resume music", "play audio", "start playback", "resume playback",
+            )) or (
+                bool(re.search(r"\bplay\b", lower)) and not any(w in lower for w in ("game", "youtube", "yt", "video", "role"))
+            )
         )
         if wants_play:
             spotify_running = False
@@ -576,16 +667,70 @@ class IntentRouter:
                 if tool_callback:
                     tool_callback("memory", mres)
 
-        # 10. Web Search
-        search_match = re.search(r"(?:search\s+for|search\s+web\s+for|google|look\s+up)\s+(.+?)(?:\s+(?:and|then|,)\s+|$)", lower)
-        if search_match:
+        # 10. Agentic Web Browsing, Tab Control, Site Navigation & Live Search
+        tab_action_map = {
+            "new tab": "new_tab",
+            "open a new tab": "new_tab",
+            "close tab": "close_tab",
+            "close this tab": "close_tab",
+            "reopen tab": "reopen_tab",
+            "restore tab": "reopen_tab",
+            "next tab": "next_tab",
+            "previous tab": "prev_tab",
+            "refresh page": "refresh",
+            "reload page": "refresh",
+            "go back": "back",
+            "go forward": "forward",
+        }
+        matched_tab_act = next((v for k, v in tab_action_map.items() if k in lower), None)
+        if matched_tab_act:
+            bres = browser_agent(matched_tab_act)
+            summaries.append(bres.get("message", f"Executed browser '{matched_tab_act}'"))
+            tools_run.append(f"browser:{matched_tab_act}")
+            if tool_callback:
+                tool_callback("browser_agent", bres)
+
+        site_search_m = re.search(
+            r"(?:search|look\s+up)\s+(?:on\s+)?(youtube|github|reddit|wikipedia|stackoverflow|amazon|maps|google)\s+(?:for\s+)?(.+?)(?:\s+(?:and|then|,)\s+|$)",
+            lower,
+        )
+        nav_m = re.search(
+            r"(?:browse\s+to|go\s+to|navigate\s+to|open\s+website|visit)\s+([a-z0-9_\-\./:]+)",
+            lower,
+        )
+        search_match = re.search(
+            r"(?:search\s+(?:the\s+)?(?:web\s+)?for|browse\s+(?:for)?|google|look\s+up)\s+(.+?)(?:\s+(?:and|then|,)\s+|$)",
+            lower,
+        )
+
+        if site_search_m and "youtube" not in handled_apps:
+            site_name = site_search_m.group(1).strip()
+            sq = site_search_m.group(2).strip()
+            bres = browser_agent("search", query=sq, site=site_name, read_content=True)
+            summaries.append(bres.get("message", f"Searched {site_name} for '{sq}'"))
+            tools_run.append(f"browser:search:{site_name}:{sq}")
+            if tool_callback:
+                tool_callback("browser_agent", bres)
+        elif nav_m:
+            dest = nav_m.group(1).strip().rstrip(".")
+            bres = browser_agent("open_site", query=dest, url=dest)
+            summaries.append(bres.get("message", f"Navigated to {dest}"))
+            tools_run.append(f"browser:navigate:{dest}")
+            if tool_callback:
+                tool_callback("browser_agent", bres)
+        elif search_match and "youtube" not in handled_apps:
             q = search_match.group(1).strip()
-            if q and len(q) > 1 and q not in ("music", "spotify", "code", "it"):
-                search_web(q)
-                summaries.append(f"Searched web for '{q}'")
+            if q and len(q) > 1 and q not in ("music", "spotify", "code", "it") and not q.startswith("to "):
+                bres = search_web(q, read_content=True)
+                snips = bres.get("results", [])
+                if snips:
+                    top_snip = "; ".join(f"{s['title']}: {s['snippet'][:120]}" for s in snips[:2])
+                    summaries.append(f"Searched web for '{q}' (Top live results: {top_snip})")
+                else:
+                    summaries.append(f"Searched web for '{q}'")
                 tools_run.append(f"search:{q}")
                 if tool_callback:
-                    tool_callback("search_web", {"query": q})
+                    tool_callback("search_web", bres)
 
         # 11. IoT & Smart Home Security Directives
         if any(w in lower for w in ("scan iot", "scan smart devices", "discover iot", "find iot devices", "iot scan")):

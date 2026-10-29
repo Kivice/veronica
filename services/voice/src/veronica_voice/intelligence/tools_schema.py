@@ -5,6 +5,8 @@ import logging
 from typing import Any
 
 from ..tools import (
+    app_interact,
+    browser_agent,
     clipboard_tool,
     close_application,
     execute_command,
@@ -198,11 +200,71 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "search_web",
-            "description": "Perform web reconnaissance by opening a search query in the browser.",
+            "name": "browser_agent",
+            "description": "Agentic Web Browser Controller: open/navigate to websites ('youtube', 'github', 'gmail', 'reddit', etc. or any URL), search specific sites, auto-play YouTube videos ('play_youtube'), perform live web research ('research' / 'read_page') to read live web snippets/pages, or control browser tabs ('new_tab', 'close_tab', 'reopen_tab', 'next_tab', 'prev_tab', 'refresh', 'back', 'forward').",
             "parameters": {
                 "type": "object",
-                "properties": {"query": {"type": "string"}},
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": [
+                            "open_site",
+                            "navigate",
+                            "search",
+                            "play_youtube",
+                            "research",
+                            "read_page",
+                            "new_tab",
+                            "close_tab",
+                            "reopen_tab",
+                            "next_tab",
+                            "prev_tab",
+                            "refresh",
+                            "back",
+                            "forward",
+                        ],
+                    },
+                    "query": {"type": "string", "description": "Search query, YouTube video title, or site name"},
+                    "site": {"type": "string", "description": "Optional target platform ('youtube', 'github', 'reddit', 'wikipedia', 'google', 'maps')"},
+                    "url": {"type": "string", "description": "Optional direct URL or domain"},
+                    "read_content": {"type": "boolean", "description": "Set true to fetch live web snippets for answering user questions"},
+                },
+                "required": ["action"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "app_interact",
+            "description": "Agentic Core Application Controller: interact deeply inside Notepad (create & open notes with content), Spotify (search & play specific tracks/artists), VS Code (open project/file paths), File Explorer (open folders or search local files), or type text / send keyboard shortcuts into any active window.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "app": {"type": "string", "description": "Target application ('notepad', 'spotify', 'vscode', 'explorer', or window title)"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["interact", "write_note", "search_and_play", "open_path", "search_files", "type", "hotkey"],
+                    },
+                    "content": {"type": "string", "description": "Text to write in Notepad, song/artist to play on Spotify, or text/hotkey to send"},
+                    "target": {"type": "string", "description": "Note filename, file search query, or folder path"},
+                },
+                "required": ["app"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Perform web reconnaissance by opening a search query in the browser and optionally reading live results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "site": {"type": "string"},
+                    "read_content": {"type": "boolean"},
+                },
                 "required": ["query"],
             },
         },
@@ -222,9 +284,27 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 ]
 
 
+def get_gemini_function_declarations() -> list[dict[str, Any]]:
+    """Convert TOOL_SCHEMAS into Google Gemini v1beta functionDeclarations format."""
+    decls: list[dict[str, Any]] = []
+    for item in TOOL_SCHEMAS:
+        fn = item.get("function", {})
+        if not fn.get("name"):
+            continue
+        params = fn.get("parameters", {"type": "object", "properties": {}})
+        entry: dict[str, Any] = {
+            "name": fn["name"],
+            "description": fn.get("description", ""),
+        }
+        if params.get("properties"):
+            entry["parameters"] = params
+        decls.append(entry)
+    return decls
+
+
 def dispatch_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Execute a structured tool call by routing to the appropriate underlying implementation."""
-    logger.info("Dispatching tool call: %s", tool_name)
+    logger.info("Dispatching tool call: %s(%s)", tool_name, arguments)
     try:
         if tool_name in ("get_system_telemetry", "system_status", "telemetry"):
             return get_system_telemetry()
@@ -268,6 +348,21 @@ def dispatch_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[str, A
                 limit=int(arguments.get("limit", 25)),
                 include_audit=bool(arguments.get("include_audit", True)),
             )
+        elif tool_name in ("browser_agent", "browser"):
+            return browser_agent(
+                action=str(arguments.get("action", "search")),
+                query=str(arguments.get("query", "")),
+                site=str(arguments.get("site", "")),
+                url=str(arguments.get("url", "")),
+                read_content=bool(arguments.get("read_content", False)),
+            )
+        elif tool_name in ("app_interact", "interact_app"):
+            return app_interact(
+                app=str(arguments.get("app", "")),
+                action=str(arguments.get("action", "interact")),
+                content=str(arguments.get("content", "")),
+                target=str(arguments.get("target", "")),
+            )
         elif tool_name == "workspace_macro":
             return workspace_macro(str(arguments.get("mode", "dev")))
         elif tool_name == "memory_store":
@@ -277,7 +372,11 @@ def dispatch_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[str, A
                 arguments.get("value"),
             )
         elif tool_name == "search_web":
-            return search_web(str(arguments.get("query", "")))
+            return search_web(
+                str(arguments.get("query", "")),
+                site=str(arguments.get("site", "")),
+                read_content=bool(arguments.get("read_content", False)),
+            )
         elif tool_name == "execute_command":
             return execute_command(str(arguments.get("command", "")))
         return execute_tool(tool_name, arguments)

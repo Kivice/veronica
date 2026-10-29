@@ -64,6 +64,45 @@ APP_SHORTCUTS = {
     "paint": ["mspaint.exe"],
 }
 
+SITE_SHORTCUTS: dict[str, str] = {
+    "youtube": "https://www.youtube.com",
+    "yt": "https://www.youtube.com",
+    "github": "https://github.com",
+    "gmail": "https://mail.google.com",
+    "google": "https://www.google.com",
+    "reddit": "https://www.reddit.com",
+    "twitter": "https://x.com",
+    "x": "https://x.com",
+    "chatgpt": "https://chatgpt.com",
+    "claude": "https://claude.ai",
+    "gemini": "https://gemini.google.com",
+    "linkedin": "https://www.linkedin.com",
+    "netflix": "https://www.netflix.com",
+    "twitch": "https://www.twitch.tv",
+    "wikipedia": "https://www.wikipedia.org",
+    "stackoverflow": "https://stackoverflow.com",
+    "stack overflow": "https://stackoverflow.com",
+    "hackernews": "https://news.ycombinator.com",
+    "hacker news": "https://news.ycombinator.com",
+    "amazon": "https://www.amazon.com",
+    "maps": "https://maps.google.com",
+    "google maps": "https://maps.google.com",
+    "drive": "https://drive.google.com",
+    "google drive": "https://drive.google.com",
+    "docs": "https://docs.google.com",
+    "google docs": "https://docs.google.com",
+    "calendar": "https://calendar.google.com",
+    "google calendar": "https://calendar.google.com",
+    "arxiv": "https://arxiv.org",
+    "whatsapp": "https://web.whatsapp.com",
+    "whatsapp web": "https://web.whatsapp.com",
+}
+
+DOMAIN_LIKE_RE = re.compile(
+    r"^(?:https?://|www\.)?[a-z0-9\-]+(?:\.[a-z0-9\-]+)*\.(?:com|org|net|io|ai|dev|edu|gov|co|tv|me|gg|app)(?:/.*)?$",
+    re.IGNORECASE,
+)
+
 MEMORY_DIR = Path.home() / ".veronica"
 MEMORY_FILE = MEMORY_DIR / "memory.json"
 CREDENTIALS_FILE = MEMORY_DIR / "credentials.json"
@@ -455,19 +494,42 @@ def _resolve_and_start(target: str) -> bool:
 
 
 def launch_application(app_name: str) -> dict[str, Any]:
-    """Launch a Windows application or URL."""
+    """Launch a Windows application, user folder, or website URL."""
     clean = app_name.strip().lower()
+    clean = re.sub(r"^(?:the|my)\s+", "", clean).strip()
 
-    # URL check
-    if clean.startswith("http://") or clean.startswith("https://") or clean.startswith("www."):
+    # 1. Known web platform shortcuts (e.g., "youtube", "github", "gmail", "reddit")
+    if clean in SITE_SHORTCUTS:
+        url = SITE_SHORTCUTS[clean]
+        webbrowser.open(url)
+        record_audit_event("browser", "open_site", "success", {"site": clean, "url": url})
+        return {"status": "success", "app": app_name, "url": url, "message": f"Opened {app_name} ({url}) in browser."}
+
+    # 2. Explicit URL or domain name (e.g., "youtube.com", "news.ycombinator.com", "https://...")
+    if clean.startswith("http://") or clean.startswith("https://") or clean.startswith("www.") or DOMAIN_LIKE_RE.match(clean):
         url = clean if clean.startswith("http") else f"https://{clean}"
         webbrowser.open(url)
-        return {"status": "success", "app": app_name, "message": f"Opening {url} in default browser."}
+        record_audit_event("browser", "open_url", "success", {"url": url})
+        return {"status": "success", "app": app_name, "url": url, "message": f"Opening {url} in default browser."}
+
+    # 3. Common user folders ("downloads", "documents", "desktop", "pictures")
+    folder_map = {
+        "downloads": str(Path.home() / "Downloads"),
+        "download": str(Path.home() / "Downloads"),
+        "documents": str(Path.home() / "Documents"),
+        "desktop": str(Path.home() / "Desktop"),
+        "pictures": str(Path.home() / "Pictures"),
+    }
+    if clean in folder_map and os.path.exists(folder_map[clean]):
+        os.startfile(folder_map[clean])  # type: ignore[attr-defined]
+        record_audit_event("app", "open_folder", "success", {"folder": clean})
+        return {"status": "success", "app": app_name, "message": f"Opened {clean.capitalize()} folder."}
 
     candidates = APP_SHORTCUTS.get(clean, [app_name, f"{app_name}.exe"])
     for cmd in candidates:
         try:
             if _resolve_and_start(cmd):
+                record_audit_event("app", "launch", "success", {"app": app_name, "cmd": cmd})
                 return {"status": "success", "app": app_name, "command": cmd, "message": f"Launched {app_name}."}
         except Exception:
             continue
@@ -824,12 +886,290 @@ def memory_store(action: str, key: str = "", value: Any = None) -> dict[str, Any
     return {"status": "error", "message": f"Unknown memory action '{action}'", "notes": bank.list_all()}
 
 
-def search_web(query: str) -> dict[str, Any]:
-    """Open search query in default web browser."""
+def _fetch_live_web_snippets(query: str, max_results: int = 4) -> list[dict[str, str]]:
+    """Perform live HTTP web retrieval (DuckDuckGo Lite/HTML + Wikipedia summary) so Veronica can read web results."""
+    snippets: list[dict[str, str]] = []
+    try:
+        import html as html_mod
+        import httpx
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        }
+        with httpx.Client(timeout=4.5, follow_redirects=True, headers=headers) as client:
+            ddg_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+            resp = client.get(ddg_url)
+            if resp.status_code == 200:
+                blocks = re.findall(
+                    r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>.*?<a[^>]+class="result__snippet"[^>]*>(.*?)</a>',
+                    resp.text,
+                    re.DOTALL,
+                )
+                for href, raw_title, raw_snip in blocks[:max_results]:
+                    title = html_mod.unescape(re.sub(r"<[^>]+>", "", raw_title)).strip()
+                    snip = html_mod.unescape(re.sub(r"<[^>]+>", "", raw_snip)).strip()
+                    if title or snip:
+                        snippets.append({"title": title, "snippet": snip, "url": href})
+    except Exception:
+        pass
+    return snippets
+
+
+def browser_agent(
+    action: str = "search",
+    query: str = "",
+    site: str = "",
+    url: str = "",
+    read_content: bool = False,
+) -> dict[str, Any]:
+    """Agentic Web Browser Controller:
+      - 'open_site' / 'navigate': Open a known site shortcut ('youtube', 'github', 'gmail', 'reddit', etc.) or URL.
+      - 'search': Search on Google, YouTube, GitHub, Reddit, Wikipedia, StackOverflow, or Maps, and optionally fetch live snippets.
+      - 'play_youtube': Find the top matching YouTube video for `query` and open/play it directly in the browser.
+      - 'research' / 'read_page': Fetch live search results or extract readable text from a URL for agentic reasoning.
+      - 'tab_control': Send active browser tab shortcuts ('new_tab', 'close_tab', 'reopen_tab', 'next_tab', 'prev_tab', 'refresh', 'back', 'forward').
+    """
+    act = action.lower().strip()
+    clean_q = (query or url).strip()
+    clean_site = site.lower().strip()
+
+    # 1. Tab & Browser Window Keyboard Control
+    tab_keys = {
+        "new_tab": "^t",
+        "close_tab": "^w",
+        "reopen_tab": "^+t",
+        "next_tab": "^{TAB}",
+        "prev_tab": "^+{TAB}",
+        "refresh": "^r",
+        "reload": "^r",
+        "back": "%{LEFT}",
+        "forward": "%{RIGHT}",
+        "address_bar": "^l",
+        "fullscreen": "{F11}",
+    }
+    if act in tab_keys or (act == "tab_control" and clean_q.lower().replace(" ", "_") in tab_keys):
+        key_cmd = tab_keys.get(act) or tab_keys[clean_q.lower().replace(" ", "_")]
+        # Focus browser first
+        for b_title in ("Edge", "Chrome", "Firefox", "Brave"):
+            f_res = window_manager("focus", b_title)
+            if f_res.get("status") == "success":
+                break
+        time.sleep(0.1)
+        execute_command(f"$ws = New-Object -ComObject WScript.Shell; $ws.SendKeys('{key_cmd}')")
+        record_audit_event("browser", f"tab_{act}", "success", {"key": key_cmd})
+        return {"status": "success", "action": act, "message": f"Executed browser control '{act}'."}
+
+    # 2. Direct YouTube Video Auto-Play
+    if act == "play_youtube" or (clean_site in ("youtube", "yt") and act in ("play", "watch")):
+        yt_search_url = f"https://www.youtube.com/results?search_query={quote_plus(clean_q)}"
+        watch_url = yt_search_url
+        try:
+            import httpx
+            with httpx.Client(timeout=4.0, follow_redirects=True) as client:
+                r = client.get(yt_search_url, headers={"User-Agent": "Mozilla/5.0"})
+                m = re.search(r'"videoId":"([a-zA-Z0-9_-]{11})"', r.text)
+                if m:
+                    watch_url = f"https://www.youtube.com/watch?v={m.group(1)}"
+        except Exception:
+            pass
+        webbrowser.open(watch_url)
+        record_audit_event("browser", "play_youtube", "success", {"query": clean_q, "url": watch_url})
+        return {
+            "status": "success",
+            "action": "play_youtube",
+            "query": clean_q,
+            "url": watch_url,
+            "message": f"Playing '{clean_q}' on YouTube ({watch_url}).",
+        }
+
+    # 3. Direct URL / Site Navigation
+    if act in ("open_site", "navigate", "open_url", "open"):
+        target = clean_site or clean_q.lower()
+        target = re.sub(r"^(?:https?://)?(?:www\.)?", "", target).rstrip("/")
+        if target in SITE_SHORTCUTS:
+            dest = SITE_SHORTCUTS[target]
+        elif clean_q.lower() in SITE_SHORTCUTS:
+            dest = SITE_SHORTCUTS[clean_q.lower()]
+        elif clean_q.startswith(("http://", "https://")):
+            dest = clean_q
+        elif "." in clean_q and " " not in clean_q:
+            dest = f"https://{clean_q}"
+        else:
+            dest = f"https://www.google.com/search?q={quote_plus(clean_q)}"
+        webbrowser.open(dest)
+        record_audit_event("browser", "navigate", "success", {"url": dest})
+        return {"status": "success", "action": "navigate", "url": dest, "message": f"Opened {dest} in browser."}
+
+    # 4. Read Webpage Content Directly
+    if act in ("read_page", "read_url") and clean_q:
+        target_url = clean_q if clean_q.startswith("http") else f"https://{clean_q}"
+        try:
+            import html as html_mod
+            import httpx
+            with httpx.Client(timeout=5.0, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"}) as client:
+                resp = client.get(target_url)
+                raw = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", resp.text, flags=re.DOTALL | re.IGNORECASE)
+                text = html_mod.unescape(re.sub(r"<[^>]+>", " ", raw))
+                text = re.sub(r"\s+", " ", text).strip()[:2500]
+                return {"status": "success", "action": "read_page", "url": target_url, "content": text}
+        except Exception as exc:
+            return {"status": "error", "url": target_url, "message": f"Could not read page: {exc}"}
+
+    # 5. Live Research / Site-Specific Search
+    site_search_templates = {
+        "youtube": "https://www.youtube.com/results?search_query={q}",
+        "yt": "https://www.youtube.com/results?search_query={q}",
+        "github": "https://github.com/search?q={q}",
+        "reddit": "https://www.reddit.com/search/?q={q}",
+        "wikipedia": "https://en.wikipedia.org/w/index.php?search={q}",
+        "stackoverflow": "https://stackoverflow.com/search?q={q}",
+        "amazon": "https://www.amazon.com/s?k={q}",
+        "maps": "https://www.google.com/maps/search/{q}",
+        "google": "https://www.google.com/search?q={q}",
+    }
+    encoded = quote_plus(clean_q)
+    search_url = site_search_templates.get(clean_site, "https://www.google.com/search?q={q}").format(q=encoded)
+
+    if act != "research":
+        webbrowser.open(search_url)
+
+    snippets = _fetch_live_web_snippets(clean_q) if (read_content or act == "research") else []
+    record_audit_event("browser", act, "success", {"query": clean_q, "site": clean_site or "google", "url": search_url})
+    return {
+        "status": "success",
+        "action": act,
+        "query": clean_q,
+        "site": clean_site or "google",
+        "url": search_url,
+        "results": snippets,
+        "message": f"Searched {clean_site or 'web'} for '{clean_q}'" + (f" ({len(snippets)} live snippets retrieved)" if snippets else ""),
+    }
+
+
+def search_web(query: str, site: str = "", read_content: bool = False) -> dict[str, Any]:
+    """Open search query in default web browser (or site-specific search) and optionally fetch live snippets."""
     clean = query.strip()
-    url = f"https://www.google.com/search?q={quote_plus(clean)}"
-    webbrowser.open(url)
-    return {"status": "success", "query": clean, "url": url, "message": f"Opened search for: '{clean}'"}
+    if clean.lower() in SITE_SHORTCUTS:
+        return browser_agent("open_site", query=clean, site=clean.lower())
+    if DOMAIN_LIKE_RE.match(clean):
+        return browser_agent("open_site", url=clean)
+    return browser_agent("search", query=clean, site=site, read_content=read_content)
+
+
+def app_interact(
+    app: str,
+    action: str = "interact",
+    content: str = "",
+    target: str = "",
+) -> dict[str, Any]:
+    """Agentic Core Application Controller:
+      - app='notepad': Create/write notes and open them in Notepad, or type text into active Notepad.
+      - app='spotify': Search or play a specific song, artist, or playlist in Spotify ('spotify:search:...').
+      - app='vscode': Open a folder, file, or create a snippet and open it in VS Code.
+      - app='explorer': Open user folders ('downloads', 'documents', 'desktop') or search local files.
+      - action='type' / 'hotkey': Focus any application window and send text or keyboard shortcuts.
+    """
+    clean_app = app.lower().strip()
+    clean_act = action.lower().strip()
+
+    # 1. Notepad Deep Interaction (Write note & open live in Notepad)
+    if clean_app in ("notepad", "editor", "note", "notes"):
+        notes_dir = Path.home() / "Documents" / "Veronica_Notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        fname = re.sub(r"[^a-zA-Z0-9_\-]", "_", target.strip()) if target.strip() else f"veronica_note_{int(time.time())}"
+        if not fname.endswith((".txt", ".md")):
+            fname += ".txt"
+        fpath = notes_dir / fname
+        text_body = content or target or "Veronica Tactical Note"
+        fpath.write_text(text_body, encoding="utf-8")
+        subprocess.Popen(["notepad.exe", str(fpath)], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        record_audit_event("app_interact", "notepad_write", "success", {"file": str(fpath)})
+        return {
+            "status": "success",
+            "app": "Notepad",
+            "action": "write_note",
+            "file": str(fpath),
+            "message": f"Created '{fname}' and opened it in Notepad.",
+        }
+
+    # 2. Spotify Deep Interaction (Play / Search specific song or artist)
+    if clean_app == "spotify":
+        song_query = (content or target).strip()
+        if not song_query:
+            launch_application("spotify")
+            time.sleep(0.3)
+            media_control("play_pause")
+            return {"status": "success", "app": "Spotify", "action": "play", "message": "Launched Spotify and started playback."}
+        try:
+            os.startfile(f"spotify:search:{quote_plus(song_query)}")  # type: ignore[attr-defined]
+            time.sleep(0.8)
+            media_control("play")
+            record_audit_event("app_interact", "spotify_search", "success", {"query": song_query})
+            return {
+                "status": "success",
+                "app": "Spotify",
+                "action": "search_and_play",
+                "query": song_query,
+                "message": f"Opened '{song_query}' in Spotify.",
+            }
+        except Exception:
+            # Fallback to web player search
+            return browser_agent("search", query=f"site:open.spotify.com {song_query}")
+
+    # 3. VS Code Deep Interaction (Open project/folder/file)
+    if clean_app in ("vscode", "vs code", "code"):
+        target_path = (target or content).strip() or "c:\\Users\\USER\\veronica"
+        if target_path.lower() in ("veronica", "project", "workspace", "current"):
+            target_path = "c:\\Users\\USER\\veronica"
+        found_code = shutil.which("code")
+        if found_code:
+            subprocess.Popen(["cmd", "/c", found_code, target_path], creationflags=CREATE_NO_WINDOW)
+            record_audit_event("app_interact", "vscode_open", "success", {"path": target_path})
+            return {"status": "success", "app": "VS Code", "path": target_path, "message": f"Opened '{target_path}' in VS Code."}
+        return launch_application("vscode")
+
+    # 4. File Explorer & Local File Search
+    if clean_app in ("explorer", "files", "file explorer", "folder"):
+        q = (target or content).strip()
+        if clean_act == "search_files" and q:
+            matches: list[str] = []
+            for root_dir in (Path.home() / "Downloads", Path.home() / "Documents", Path.home() / "Desktop"):
+                if not root_dir.exists():
+                    continue
+                for p in root_dir.rglob(f"*{q}*"):
+                    matches.append(str(p))
+                    if len(matches) >= 15:
+                        break
+                if len(matches) >= 15:
+                    break
+            return {
+                "status": "success",
+                "app": "File Explorer",
+                "action": "search_files",
+                "query": q,
+                "matches": matches,
+                "count": len(matches),
+                "message": f"Found {len(matches)} local files matching '{q}'.",
+            }
+        return launch_application(q or "explorer")
+
+    # 5. Universal Window Focus + Type Text / Send Hotkey
+    if clean_act in ("type", "hotkey", "send_keys") and content:
+        if clean_app:
+            window_manager("focus", clean_app)
+            time.sleep(0.15)
+        if clean_act == "type":
+            clipboard_tool("set", content)
+            execute_command("$ws = New-Object -ComObject WScript.Shell; $ws.SendKeys('^v')")
+            msg = f"Typed text into {clean_app or 'active window'}."
+        else:
+            safe_keys = content.replace("'", "")
+            execute_command(f"$ws = New-Object -ComObject WScript.Shell; $ws.SendKeys('{safe_keys}')")
+            msg = f"Sent shortcut '{content}' to {clean_app or 'active window'}."
+        record_audit_event("app_interact", clean_act, "success", {"app": clean_app})
+        return {"status": "success", "app": clean_app, "action": clean_act, "message": msg}
+
+    return launch_application(clean_app)
 
 
 def workspace_macro(name: str) -> dict[str, Any]:
@@ -924,5 +1264,20 @@ def execute_tool(tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
         return memory_store(action, key, val)
     elif name in ("search_web", "search", "browse"):
         q = params.get("query") or params.get("q", "")
-        return search_web(str(q))
+        return search_web(str(q), site=str(params.get("site", "")), read_content=bool(params.get("read_content", False)))
+    elif name in ("browser_agent", "browser", "web_browser"):
+        return browser_agent(
+            action=str(params.get("action", "search")),
+            query=str(params.get("query") or params.get("q", "")),
+            site=str(params.get("site", "")),
+            url=str(params.get("url", "")),
+            read_content=bool(params.get("read_content", False)),
+        )
+    elif name in ("app_interact", "interact_app", "core_app"):
+        return app_interact(
+            app=str(params.get("app", "")),
+            action=str(params.get("action", "interact")),
+            content=str(params.get("content", "")),
+            target=str(params.get("target", "")),
+        )
     return {"status": "error", "message": f"Unknown tool: '{tool_name}'"}

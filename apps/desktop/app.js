@@ -500,8 +500,16 @@
           toolBadge.textContent = `⚡ Telemetry Synced`;
         } else if (toolName === "workspace_macro") {
           toolBadge.textContent = `🎯 Workspace Macro`;
+        } else if (toolName === "browser_agent" || toolName.startsWith("browser:")) {
+          const bSite = res.site || res.action || "web";
+          const bQuery = res.query ? `: ${res.query.slice(0, 22)}` : "";
+          toolBadge.textContent = `🌐 Browser (${bSite}${bQuery})`;
+        } else if (toolName === "app_interact" || toolName.startsWith("app_interact:")) {
+          const aName = res.app || "App";
+          const aAct = res.action ? ` · ${res.action}` : "";
+          toolBadge.textContent = `🧩 ${aName}${aAct}`;
         } else if (toolName === "search_web") {
-          toolBadge.textContent = `🌐 Web Search`;
+          toolBadge.textContent = `🌐 Web Search${res.query ? ": " + res.query.slice(0, 20) : ""}`;
         } else {
           toolBadge.textContent = `⚡ ${toolName}`;
         }

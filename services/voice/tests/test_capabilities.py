@@ -295,6 +295,52 @@ def test_veronica_audit_logger_redaction():
     assert len(logs["recent_audit_events"]) >= 1
 
 
+@pytest.mark.asyncio
+async def test_agentic_browsing_and_core_app_interactions(monkeypatch, tmp_path):
+    import webbrowser
+    from veronica_voice import tools as tools_mod
+    from veronica_voice.intelligence import intent as intent_mod
+    from veronica_voice.intelligence.intent import IntentRouter
+    from veronica_voice.intelligence.tools_schema import get_gemini_function_declarations
+
+    opened_urls: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", lambda u: opened_urls.append(u) or True)
+
+    router = IntentRouter()
+
+    # 1. Website navigation ("browse to github.com", "open youtube")
+    executed, summaries, tools_run = await router.execute_directives("browse to github.com")
+    assert executed is True
+    assert any("github.com" in u for u in opened_urls)
+
+    opened_urls.clear()
+    executed, summaries, tools_run = await router.execute_directives("open youtube")
+    assert executed is True
+    assert any("youtube.com" in u for u in opened_urls)
+
+    # 2. Site-specific search ("search github for veronica")
+    opened_urls.clear()
+    monkeypatch.setattr(tools_mod, "_fetch_live_web_snippets", lambda q, max_results=4: [{"title": "Veronica", "snippet": "Stark HUD", "url": "https://github.com/Kivice/veronica"}])
+    executed, summaries, tools_run = await router.execute_directives("search github for veronica")
+    assert executed is True
+    assert any("github.com/search" in u for u in opened_urls)
+
+    # 3. Core app interaction: Notepad note creation (mock Popen so no real window spawns during pytest)
+    spawned_cmds: list[list[str]] = []
+    monkeypatch.setattr(tools_mod.subprocess, "Popen", lambda cmd, **kw: spawned_cmds.append(cmd))
+    executed, summaries, tools_run = await router.execute_directives("open notepad and write buy milk and eggs")
+    assert executed is True
+    assert "app_interact:notepad" in tools_run
+    assert any("notepad.exe" in c[0] for c in spawned_cmds)
+
+    # 4. Gemini function declarations include browser_agent and app_interact
+    decls = get_gemini_function_declarations()
+    names = {d["name"] for d in decls}
+    assert "browser_agent" in names
+    assert "app_interact" in names
+
+
+
 
 
 

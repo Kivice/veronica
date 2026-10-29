@@ -25,6 +25,7 @@ from .adapters import (
 from .context import ContextManager
 from .intent import IntentRouter
 from .models import IntentType
+from .tools_schema import dispatch_tool_call, get_gemini_function_declarations
 from .vision import VisionEngine
 
 logger = logging.getLogger("veronica.intelligence.engine")
@@ -287,11 +288,27 @@ class IntelligenceEngine:
         else:
             sys_prompt = self.context.build_system_prompt()
             messages = self.context.get_messages_for_provider(new_prompt=clean)
+            gemini_tools = get_gemini_function_declarations()
+
+            def _agentic_tool_exec(fn_name: str, fn_args: dict[str, Any]) -> dict[str, Any]:
+                res = dispatch_tool_call(fn_name, fn_args)
+                record_audit_event("agentic_tool", fn_name, res.get("status", "success"), {"args": fn_args})
+                if self.tool_callback:
+                    try:
+                        self.tool_callback(fn_name, res)
+                    except Exception:
+                        pass
+                return res
 
             for adapter in pipeline:
                 try:
                     full_chunks.clear()
-                    async for chunk in adapter.stream_chat(messages, system_prompt=sys_prompt):
+                    async for chunk in adapter.stream_chat(
+                        messages,
+                        system_prompt=sys_prompt,
+                        tools=gemini_tools,
+                        tool_executor=_agentic_tool_exec,
+                    ):
                         full_chunks.append(chunk)
                         yield chunk
                     success = True

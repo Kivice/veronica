@@ -103,10 +103,14 @@ class GeminiAdapter(BaseModelAdapter):
         if not self.is_configured:
             raise RuntimeError("Gemini API key not configured")
 
-        contents = []
+        contents: list[dict[str, Any]] = []
         for msg in messages:
             role = "model" if msg["role"] == "assistant" else "user"
             contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+
+        tool_declarations = kwargs.get("tools")
+        tool_executor = kwargs.get("tool_executor")
+        max_tool_rounds = int(kwargs.get("max_tool_rounds", 4))
 
         target_models = self._build_candidate_list(model)
         last_err: Optional[str] = None
@@ -122,55 +126,88 @@ class GeminiAdapter(BaseModelAdapter):
                 idx += 1
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand_model}:streamGenerateContent?alt=sse"
                 headers = {"x-goog-api-key": self.api_key}
-                payload: dict[str, Any] = {"contents": contents}
-                if system_prompt:
-                    payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
 
                 try:
-                    async with client.stream("POST", url, json=payload, headers=headers) as resp:
-                        if resp.status_code == 200:
-                            async for line in resp.aiter_lines():
-                                if line.startswith("data: "):
-                                    try:
-                                        data = json.loads(line[6:])
-                                        cands = data.get("candidates", [])
-                                        if cands:
-                                            parts = cands[0].get("content", {}).get("parts", [])
-                                            for p in parts:
-                                                # Skip internal reasoning/thought blocks on Gemini 2.5+ / 3.x thinking models
-                                                if p.get("thought") is True:
-                                                    continue
-                                                if "text" in p and p["text"]:
-                                                    if first_token:
-                                                        ttft_ms = (time.time() - start_time) * 1000
-                                                        first_token = False
-                                                        self.circuit_breaker.record_success(ttft_ms)
-                                                    token_count += 1
-                                                    yield p["text"]
-                                    except Exception:
-                                        continue
+                    round_num = 0
+                    while round_num <= max_tool_rounds:
+                        round_num += 1
+                        payload: dict[str, Any] = {"contents": contents}
+                        if system_prompt:
+                            payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
+                        if tool_declarations and callable(tool_executor) and round_num <= max_tool_rounds:
+                            payload["tools"] = [{"functionDeclarations": tool_declarations}]
 
-                            self.circuit_breaker.record_success(
-                                (time.time() - start_time) * 1000 if first_token else 0.0,
-                                token_count,
-                            )
-                            self.default_model = cand_model
-                            return
+                        model_turn_parts: list[dict[str, Any]] = []
+                        pending_fn_calls: list[dict[str, Any]] = []
 
-                        body = (await resp.aread()).decode("utf-8", errors="ignore")
-                        last_err = f"Gemini {cand_model} HTTP {resp.status_code}"
-                        if resp.status_code in (401, 403) or "API_KEY_INVALID" in body or "API key not valid" in body:
-                            self.mark_key_invalid("Gemini rejected API key (API_KEY_INVALID)")
+                        async with client.stream("POST", url, json=payload, headers=headers) as resp:
+                            if resp.status_code == 200:
+                                async for line in resp.aiter_lines():
+                                    if line.startswith("data: "):
+                                        try:
+                                            data = json.loads(line[6:])
+                                            cands = data.get("candidates", [])
+                                            if cands:
+                                                parts = cands[0].get("content", {}).get("parts", [])
+                                                for p in parts:
+                                                    model_turn_parts.append(p)
+                                                    if "functionCall" in p:
+                                                        pending_fn_calls.append(p["functionCall"])
+                                                        continue
+                                                    # Skip internal reasoning/thought blocks on Gemini 2.5+ / 3.x thinking models
+                                                    if p.get("thought") is True:
+                                                        continue
+                                                    if "text" in p and p["text"]:
+                                                        if first_token:
+                                                            ttft_ms = (time.time() - start_time) * 1000
+                                                            first_token = False
+                                                            self.circuit_breaker.record_success(ttft_ms)
+                                                        token_count += 1
+                                                        yield p["text"]
+                                        except Exception:
+                                            continue
+
+                                # If Gemini invoked one or more agentic tools, execute them and continue the ReAct loop
+                                if pending_fn_calls and callable(tool_executor):
+                                    contents.append({"role": "model", "parts": model_turn_parts})
+                                    fn_response_parts: list[dict[str, Any]] = []
+                                    for fc in pending_fn_calls:
+                                        fn_name = fc.get("name", "")
+                                        fn_args = fc.get("args") or {}
+                                        res = tool_executor(fn_name, fn_args)
+                                        fn_response_parts.append({
+                                            "functionResponse": {
+                                                "name": fn_name,
+                                                "response": {"result": res},
+                                            }
+                                        })
+                                    contents.append({"role": "user", "parts": fn_response_parts})
+                                    continue
+
+                                self.circuit_breaker.record_success(
+                                    (time.time() - start_time) * 1000 if first_token else 0.0,
+                                    token_count,
+                                )
+                                self.default_model = cand_model
+                                return
+
+                            body = (await resp.aread()).decode("utf-8", errors="ignore")
+                            last_err = f"Gemini {cand_model} HTTP {resp.status_code}"
+                            if resp.status_code in (401, 403) or "API_KEY_INVALID" in body or "API key not valid" in body:
+                                self.mark_key_invalid("Gemini rejected API key (API_KEY_INVALID)")
+                                break
+                            if resp.status_code == 404 and not tried_discovery:
+                                tried_discovery = True
+                                discovered = await self._discover_best_models(client)
+                                for dm in discovered:
+                                    if dm not in target_models:
+                                        target_models.append(dm)
+                                break
+                            if resp.status_code not in (404, 429, 503):
+                                break
                             break
-                        if resp.status_code == 404 and not tried_discovery:
-                            tried_discovery = True
-                            discovered = await self._discover_best_models(client)
-                            for dm in discovered:
-                                if dm not in target_models:
-                                    target_models.append(dm)
-                            continue
-                        if resp.status_code not in (404, 429, 503):
-                            break
+                    if self.key_invalid:
+                        break
                 except Exception as e:
                     last_err = str(e)
                     continue
