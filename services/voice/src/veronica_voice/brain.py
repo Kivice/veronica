@@ -91,6 +91,10 @@ class VeronicaBrain:
         """Register a callback invoked when tools or directives are executed."""
         self.engine.set_tool_callback(callback)
 
+    def set_approval_sender(self, sender: Optional[Callable[[dict[str, Any]], Any]]) -> None:
+        """Register the async UI channel used for per-action approval prompts."""
+        self.engine.set_approval_sender(sender)
+
     def update_keys(self, keys: dict[str, str], overwrite_existing: bool = True) -> None:
         """Dynamically update API credentials from client settings and persist to disk."""
         self.engine.update_credentials(keys, overwrite_existing=overwrite_existing)

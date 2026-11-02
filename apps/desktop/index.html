@@ -61,6 +61,15 @@
         <span class="telemetry-label">SYS_TIME</span>
         <span id="clockValue" class="telemetry-val">00:00:00</span>
       </div>
+      <button id="contrastBtn" class="hud-btn-icon" title="Toggle High-Contrast Tactical HUD">
+        <span>👁️</span>
+      </button>
+      <button id="fontScaleBtn" class="hud-btn-icon" title="Cycle Font Scale (Normal / Large / XL)">
+        <span id="fontScaleLabel">A+</span>
+      </button>
+      <button id="auditLogBtn" class="hud-toggle-pill" title="Security Audit Trail & Operational Logs">
+        <span>📜 AUDIT</span>
+      </button>
       <button id="resetLayoutBtn" class="hud-btn-icon" title="Reset panel layout (drag the glowing dividers to resize panels; double-click a divider to collapse it)">
         <span>⤢</span>
       </button>
@@ -156,6 +165,25 @@
         </div>
       </div>
 
+      <!-- Autonomous Multi-Step Task Planner HUD Widget -->
+      <div id="taskPlanPanel" class="task-plan-panel" style="display: none;">
+        <div class="plan-panel-header">
+          <div class="plan-header-title">
+            <span class="plan-pulse-dot"></span>
+            <span class="plan-tag">TACTICAL MISSION PLAN:</span>
+            <span id="planGoalText" class="plan-goal">Autonomous Objective</span>
+          </div>
+          <div class="plan-header-controls">
+            <span id="planProgressPill" class="plan-progress-pill">0/0</span>
+            <button id="clearPlanBtn" class="plan-close-btn" title="Clear Mission Plan">&times;</button>
+          </div>
+        </div>
+        <div class="plan-progress-track">
+          <div id="planProgressFill" class="plan-progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="planStepsContainer" class="plan-steps-container"></div>
+      </div>
+
       <!-- Speech Waveform & Real-time Transcript -->
       <div class="voice-console">
         <div class="console-meta">
@@ -208,6 +236,10 @@
           <button class="chip chip-highlight" id="analyzeScreenChip">👁️ Analyze Screen</button>
           <button class="chip" data-macro="dev">🚀 Dev Workspace</button>
           <button class="chip" data-macro="focus">🎯 Focus Mode</button>
+          <button class="chip" data-query="Explain what I'm looking at">👁️ Explain Screen</button>
+          <button class="chip" data-query="Explain my clipboard">📋 Explain Clipboard</button>
+          <button class="chip" data-query="Check the camera">📹 Camera Recon</button>
+          <button class="chip" data-query="Discover LAN IoT devices">📡 Discover IoT</button>
           <button class="chip" data-query="System status report">⚡ System Status</button>
           <button class="chip" data-query="Open VS Code">💻 Launch VS Code</button>
           <button class="chip" data-query="Open Calculator">🧮 Calculator</button>
@@ -235,6 +267,9 @@
         <button id="analyzeScreenBtn" class="hud-action-btn btn-vision">
           <span>👁️ ANALYZE ACTIVE DISPLAY</span>
         </button>
+        <button id="checkCamBtn" class="hud-action-btn" style="margin-top: 6px;">
+          <span>📹 CHECK LAN CAMERA</span>
+        </button>
       </div>
 
       <!-- Tactical Workspaces & Macros -->
@@ -245,6 +280,9 @@
           <button class="macro-btn" data-macro="focus">🎯 Focus</button>
           <button class="macro-btn" data-macro="scan">🔬 Deep Scan</button>
         </div>
+        <button id="discoverIotBtn" class="hud-action-btn" style="margin-top: 6px;">
+          <span>📡 SCAN LAN IOT</span>
+        </button>
       </div>
 
       <!-- Quick Launch Matrix -->
@@ -358,6 +396,87 @@
       <div class="modal-footer">
         <button id="testAudioBtn" class="hud-btn-secondary">Test Voice Audio</button>
         <button id="saveSettingsBtn" class="hud-btn-primary">Apply Configuration</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tactical Action Approval Gate Modal -->
+  <div id="approvalModal" class="modal-backdrop">
+    <div class="modal-card modal-card-alert">
+      <div class="modal-header modal-header-alert">
+        <div class="approval-header-title">
+          <span class="alert-shield-icon">🛡️</span>
+          <div>
+            <h3 class="modal-title alert-title">TACTICAL SECURITY GATE // APPROVAL REQUIRED</h3>
+            <p class="modal-sub alert-sub">Agent-initiated high-risk action requires operator consent</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="approval-card-main">
+          <div class="approval-meta-row">
+            <span class="approval-tool-tag" id="approvalToolTag">TOOL: EXECUTE_COMMAND</span>
+            <span class="approval-risk-badge" id="approvalRiskBadge">CRITICAL ACTION</span>
+          </div>
+          <div class="approval-reason" id="approvalReasonText">Directive requires confirmation.</div>
+          <div class="approval-code-box">
+            <div class="code-box-header">PARAMETERS & COMMAND PREVIEW</div>
+            <pre id="approvalArgsPreview" class="approval-args-pre">{}</pre>
+          </div>
+          <div class="approval-timer-row">
+            <span class="approval-timer-label">AUTO-DENY IN:</span>
+            <div class="approval-timer-track">
+              <div id="approvalTimerFill" class="approval-timer-fill" style="width: 100%"></div>
+            </div>
+            <span id="approvalTimerText" class="approval-timer-secs">45s</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer approval-footer">
+        <div class="approval-btn-group">
+          <button id="approvalAllowOnceBtn" class="hud-btn-primary btn-allow">ALLOW ONCE</button>
+          <button id="approvalAlwaysBtn" class="hud-btn-secondary btn-always">ALWAYS ALLOW</button>
+        </div>
+        <div class="approval-btn-group">
+          <button id="approvalDenyOnceBtn" class="hud-btn-secondary btn-deny">DENY</button>
+          <button id="approvalNeverBtn" class="hud-btn-danger btn-never">NEVER ALLOW</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tactical Audit Log Viewer Modal -->
+  <div id="auditModal" class="modal-backdrop">
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <div class="brand-cluster">
+          <span class="engine-icon">📜</span>
+          <div>
+            <h3 class="modal-title">TACTICAL AUDIT TRAIL // OPERATION LOGS</h3>
+            <p class="modal-sub">Structured security events, tamper-evident audit trail & redaction logs</p>
+          </div>
+        </div>
+        <button id="closeAuditBtn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-toolbar">
+        <div class="audit-tabs">
+          <button id="tabAuditEvents" class="audit-tab active">SECURITY AUDIT (JSONL)</button>
+          <button id="tabAppLogs" class="audit-tab">VERONICA.LOG</button>
+        </div>
+        <div class="audit-search-box">
+          <input type="text" id="auditSearchInput" class="hud-modal-input audit-filter" placeholder="Filter by action, tool, status, or keyword...">
+          <button id="refreshAuditBtn" class="hud-btn-small">⚡ REFRESH</button>
+        </div>
+      </div>
+      <div class="modal-body audit-modal-body">
+        <div id="auditEventsView" class="audit-content-view active">
+          <div id="auditEventsList" class="audit-list">
+            <div class="audit-empty-state">Loading audit events...</div>
+          </div>
+        </div>
+        <div id="appLogsView" class="audit-content-view">
+          <pre id="appLogsPre" class="app-logs-pre">Loading operational logs...</pre>
+        </div>
       </div>
     </div>
   </div>

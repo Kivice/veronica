@@ -1345,3 +1345,626 @@ body.is-resizing iframe, body.is-resizing canvas { pointer-events: none; }
   color: #ffffff !important;
   box-shadow: 0 0 10px rgba(0, 243, 255, 0.25);
 }
+
+/* =====================================================================
+   AUTONOMOUS MULTI-STEP TASK PLANNER WIDGET
+   ===================================================================== */
+.task-plan-panel {
+  background: rgba(10, 20, 38, 0.92);
+  border: 1px solid var(--neon-cyan);
+  border-radius: 8px;
+  margin: 10px 16px 4px 16px;
+  padding: 12px 14px;
+  box-shadow: 0 4px 20px rgba(0, 243, 255, 0.15), inset 0 0 12px rgba(0, 243, 255, 0.05);
+  animation: fadeIn 0.3s ease-out;
+  flex-shrink: 0;
+}
+
+.plan-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.plan-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plan-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 8px var(--neon-cyan);
+  animation: pulseCyan 1.4s infinite;
+  flex-shrink: 0;
+}
+
+.plan-tag {
+  font-family: var(--font-hud);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--neon-cyan);
+  white-space: nowrap;
+}
+
+.plan-goal {
+  font-family: var(--font-tech);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.plan-progress-pill {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--neon-green);
+  background: rgba(0, 255, 136, 0.12);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.plan-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+  transition: var(--transition-smooth);
+}
+
+.plan-close-btn:hover {
+  color: var(--neon-crimson);
+}
+
+.plan-progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.plan-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-blue), var(--neon-cyan));
+  box-shadow: 0 0 8px var(--neon-cyan);
+  transition: width 0.35s ease;
+}
+
+.plan-steps-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.plan-step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-family: var(--font-tech);
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: rgba(14, 23, 44, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: var(--transition-smooth);
+}
+
+.plan-step-item.step-running {
+  background: rgba(0, 243, 255, 0.12);
+  border-color: rgba(0, 243, 255, 0.45);
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+}
+
+.plan-step-item.step-done {
+  opacity: 0.72;
+  border-color: rgba(0, 255, 136, 0.25);
+}
+
+.plan-step-item.step-failed {
+  border-color: rgba(255, 42, 85, 0.5);
+  background: rgba(255, 42, 85, 0.1);
+}
+
+.plan-step-item.step-skipped {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
+.plan-step-status-icon {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.step-running .plan-step-status-icon {
+  color: var(--neon-cyan);
+  animation: pulseCyan 1s infinite;
+}
+
+.step-done .plan-step-status-icon {
+  color: var(--neon-green);
+}
+
+.step-failed .plan-step-status-icon {
+  color: var(--neon-crimson);
+}
+
+.step-skipped .plan-step-status-icon {
+  color: var(--neon-amber);
+}
+
+.step-pending .plan-step-status-icon {
+  color: var(--text-muted);
+}
+
+.plan-step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-step-text {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.step-done .plan-step-text {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+
+.plan-step-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+/* =====================================================================
+   ACTION APPROVAL GATE MODAL
+   ===================================================================== */
+.modal-card-alert {
+  border-color: var(--neon-amber) !important;
+  box-shadow: 0 0 40px rgba(255, 183, 0, 0.35) !important;
+  max-width: 580px !important;
+}
+
+.modal-header-alert {
+  border-bottom-color: rgba(255, 183, 0, 0.3) !important;
+}
+
+.approval-header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.alert-shield-icon {
+  font-size: 1.8rem;
+  filter: drop-shadow(0 0 10px rgba(255, 183, 0, 0.6));
+}
+
+.alert-title {
+  color: var(--neon-amber) !important;
+  font-size: 0.96rem;
+}
+
+.alert-sub {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  margin-top: 2px;
+}
+
+.approval-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.approval-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.approval-tool-tag {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--neon-cyan);
+  background: rgba(0, 243, 255, 0.1);
+  border: 1px solid rgba(0, 243, 255, 0.3);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.approval-risk-badge {
+  font-family: var(--font-hud);
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--neon-crimson);
+  background: rgba(255, 42, 85, 0.15);
+  border: 1px solid rgba(255, 42, 85, 0.4);
+  padding: 3px 8px;
+  border-radius: 4px;
+  animation: pulseCrimson 1.5s infinite;
+}
+
+@keyframes pulseCrimson {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.approval-reason {
+  font-family: var(--font-tech);
+  font-size: 1.05rem;
+  color: #ffffff;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.approval-code-box {
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 183, 0, 0.25);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.code-box-header {
+  font-family: var(--font-hud);
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.approval-args-pre {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: #ffe89e;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.approval-timer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.approval-timer-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.approval-timer-fill {
+  height: 100%;
+  background: var(--neon-amber);
+  box-shadow: 0 0 8px var(--neon-amber);
+  transition: width 0.2s linear;
+}
+
+.approval-timer-secs {
+  color: var(--neon-amber);
+  font-weight: 700;
+  min-width: 30px;
+  text-align: right;
+}
+
+.approval-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.approval-btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-allow {
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.3), rgba(0, 255, 136, 0.15)) !important;
+  border-color: var(--neon-green) !important;
+  color: var(--neon-green) !important;
+}
+
+.btn-allow:hover {
+  background: rgba(0, 255, 136, 0.4) !important;
+  box-shadow: 0 0 16px var(--neon-green) !important;
+}
+
+.btn-always {
+  border-color: var(--neon-cyan) !important;
+  color: var(--neon-cyan) !important;
+}
+
+.btn-deny {
+  color: var(--text-secondary) !important;
+}
+
+.btn-never {
+  background: rgba(255, 42, 85, 0.15) !important;
+  border: 1px solid var(--neon-crimson) !important;
+  color: var(--neon-crimson) !important;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-family: var(--font-tech);
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.btn-never:hover {
+  background: rgba(255, 42, 85, 0.35) !important;
+  box-shadow: 0 0 14px var(--neon-crimson) !important;
+}
+
+/* =====================================================================
+   TACTICAL AUDIT LOG VIEWER MODAL
+   ===================================================================== */
+.modal-card-wide {
+  max-width: 860px !important;
+  width: 90% !important;
+  height: 82vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.modal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 24px;
+  border-bottom: 1px solid rgba(0, 243, 255, 0.15);
+  background: rgba(14, 23, 44, 0.4);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.audit-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.audit-tab {
+  background: transparent;
+  border: 1px solid rgba(0, 243, 255, 0.2);
+  color: var(--text-muted);
+  font-family: var(--font-hud);
+  font-size: 0.72rem;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.audit-tab.active {
+  background: rgba(0, 243, 255, 0.18);
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.25);
+}
+
+.audit-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 380px;
+}
+
+.audit-filter {
+  font-size: 0.78rem !important;
+  padding: 6px 10px !important;
+}
+
+.audit-modal-body {
+  flex: 1;
+  overflow: hidden;
+  padding: 14px 24px !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.audit-content-view {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.audit-content-view.active {
+  display: block;
+}
+
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.audit-event-card {
+  background: rgba(14, 23, 44, 0.6);
+  border: 1px solid rgba(0, 243, 255, 0.12);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: var(--transition-smooth);
+}
+
+.audit-event-card:hover {
+  border-color: rgba(0, 243, 255, 0.4);
+  background: rgba(14, 23, 44, 0.85);
+}
+
+.audit-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.audit-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #ffffff;
+}
+
+.audit-category-tag {
+  color: var(--neon-cyan);
+  font-weight: 600;
+}
+
+.audit-badge {
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.audit-badge.badge-success, .audit-badge.badge-approved {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--neon-green);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+}
+
+.audit-badge.badge-denied, .audit-badge.badge-blocked, .audit-badge.badge-failed {
+  background: rgba(255, 42, 85, 0.15);
+  color: var(--neon-crimson);
+  border: 1px solid rgba(255, 42, 85, 0.35);
+}
+
+.audit-badge.badge-high, .audit-badge.badge-pending {
+  background: rgba(255, 183, 0, 0.15);
+  color: var(--neon-amber);
+  border: 1px solid rgba(255, 183, 0, 0.3);
+}
+
+.audit-card-time {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.audit-card-details {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 6px 8px;
+  border-radius: 4px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.audit-empty-state {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--text-muted);
+  font-family: var(--font-tech);
+  font-size: 0.95rem;
+}
+
+.app-logs-pre {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: #a0c4f8;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  height: 100%;
+}
+
+/* =====================================================================
+   HIGH-CONTRAST MODE & FONT SCALING (UI POLISH)
+   ===================================================================== */
+body.high-contrast {
+  --bg-void: #000104;
+  --bg-panel: rgba(2, 6, 16, 0.96);
+  --bg-panel-border: #00f3ff;
+  --bg-card: rgba(4, 12, 28, 0.95);
+  --text-primary: #ffffff;
+  --text-secondary: #cde4ff;
+  --text-muted: #80a0c8;
+}
+
+body.high-contrast .hud-scanline {
+  opacity: 0.1;
+}
+
+body.high-contrast .hud-panel {
+  border-width: 2px;
+  box-shadow: 0 0 24px rgba(0, 243, 255, 0.3);
+}
+
+body.high-contrast .hud-action-btn, 
+body.high-contrast .app-card, 
+body.high-contrast .chip {
+  border-color: var(--neon-cyan);
+}
+
+body.font-large {
+  font-size: 112%;
+}
+
+body.font-large .message-text {
+  font-size: 1.15rem;
+}
+
+body.font-large .hud-input {
+  font-size: 1.05rem;
+}
+
+body.font-xl {
+  font-size: 125%;
+}
+
+body.font-xl .message-text {
+  font-size: 1.25rem;
+}
+
+body.font-xl .hud-input {
+  font-size: 1.15rem;
+}
+

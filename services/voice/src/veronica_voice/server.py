@@ -50,6 +50,7 @@ class ServiceContext:
     tts: Optional[EdgeTtsEngine] = None
     allowed_origins: frozenset[str] = frozenset()
     active_clients: set[Any] = field(default_factory=set)
+    bg_tasks: dict[Any, set] = field(default_factory=dict)
 
 
 def _reject_foreign_origin(ctx: ServiceContext):
@@ -81,6 +82,50 @@ async def _send(ws: ServerConnection, env: Envelope) -> None:
 
 
 def _make_handler(ctx: ServiceContext):
+    async def _process_text(ws: ServerConnection, env: Envelope, text: str) -> None:
+        """Run one conversational turn: stream text, tool badges, approvals and neural speech."""
+        try:
+            def _on_tool_executed(tool_name: str, result: dict[str, Any]):
+                try:
+                    asyncio.create_task(
+                        _send(ws, Envelope("tool.result", env.id, {"tool": tool_name, "result": result}))
+                    )
+                except Exception:
+                    pass
+
+            async def _ask_approval(payload: dict[str, Any]) -> None:
+                await _send(ws, Envelope("approval.request", env.id, payload))
+
+            if hasattr(ctx.llm, "set_tool_callback"):
+                ctx.llm.set_tool_callback(_on_tool_executed)
+            if hasattr(ctx.llm, "set_approval_sender"):
+                ctx.llm.set_approval_sender(_ask_approval)
+
+            full_reply: list[str] = []
+            async for chunk in ctx.llm.respond(text):
+                full_reply.append(chunk)
+                await _send(ws, Envelope("text.delta", env.id, {"text": chunk}))
+            await _send(ws, Envelope("text.done", env.id))
+
+            # If TTS synthesis is active and engine present, stream neural audio
+            synthesize = env.payload.get("synthesize", True)
+            full_text = "".join(full_reply).strip()
+            if synthesize and full_text and ctx.tts is not None:
+                try:
+                    async for audio_chunk in ctx.tts.stream_audio(full_text):
+                        await _send(
+                            ws,
+                            Envelope("audio.delta", env.id, {"audio": audio_chunk, "format": "mp3"}),
+                        )
+                    await _send(ws, Envelope("audio.done", env.id))
+                except Exception as exc:
+                    logger.warning("TTS generation skipped: %s", exc)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error("Turn processing failed: %s", exc, exc_info=True)
+            await _send(ws, Envelope("error", env.id, {"message": "internal error while processing request"}))
+
     async def _handle_connection(ws: ServerConnection) -> None:
         try:
             raw = await asyncio.wait_for(ws.recv(), HELLO_TIMEOUT_S)
@@ -133,36 +178,22 @@ def _make_handler(ctx: ServiceContext):
                     await _send(ws, Envelope("error", env.id, {"message": "invalid text"}))
                     continue
 
-                def _on_tool_executed(tool_name: str, result: dict[str, Any]):
-                    try:
-                        asyncio.create_task(
-                            _send(ws, Envelope("tool.result", env.id, {"tool": tool_name, "result": result}))
-                        )
-                    except Exception:
-                        pass
+                # Run the turn in the background so this loop can keep receiving frames
+                # (e.g. approval.response while a tool call is waiting for consent).
+                task = asyncio.create_task(_process_text(ws, env, text))
+                tasks = ctx.bg_tasks.setdefault(ws, set())
+                tasks.add(task)
+                task.add_done_callback(tasks.discard)
 
-                if hasattr(ctx.llm, "set_tool_callback"):
-                    ctx.llm.set_tool_callback(_on_tool_executed)
+            elif env.type == "approval.response":
+                from .approvals import approval_manager
 
-                full_reply: list[str] = []
-                async for chunk in ctx.llm.respond(text):
-                    full_reply.append(chunk)
-                    await _send(ws, Envelope("text.delta", env.id, {"text": chunk}))
-                await _send(ws, Envelope("text.done", env.id))
-
-                # If TTS synthesis is active and engine present, stream neural audio
-                synthesize = env.payload.get("synthesize", True)
-                full_text = "".join(full_reply).strip()
-                if synthesize and full_text and ctx.tts is not None:
-                    try:
-                        async for audio_chunk in ctx.tts.stream_audio(full_text):
-                            await _send(
-                                ws,
-                                Envelope("audio.delta", env.id, {"audio": audio_chunk, "format": "mp3"}),
-                            )
-                        await _send(ws, Envelope("audio.done", env.id))
-                    except Exception as exc:
-                        logger.warning("TTS generation skipped: %s", exc)
+                req_id = str(env.payload.get("request_id", ""))
+                decision = str(env.payload.get("decision", "deny"))
+                if decision not in ("allow_once", "allow", "always", "never", "deny"):
+                    decision = "deny"
+                if not approval_manager.resolve(req_id, decision):
+                    await _send(ws, Envelope("error", env.id, {"message": "unknown or expired approval request"}))
 
             elif env.type == "tool.execute":
                 tool_name = str(env.payload.get("tool", ""))
@@ -293,6 +324,8 @@ def _make_handler(ctx: ServiceContext):
         except (ConnectionClosed, ConnectionResetError, OSError):
             pass
         finally:
+            for t in list(ctx.bg_tasks.pop(ws, set())):
+                t.cancel()
             ctx.active_clients.discard(ws)
 
     return handler

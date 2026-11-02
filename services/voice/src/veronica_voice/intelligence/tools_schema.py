@@ -142,7 +142,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["list", "scan", "register", "remove", "turn_on", "turn_off", "toggle", "lock", "unlock"],
+                        "enum": ["list", "scan", "discover", "register", "remove", "turn_on", "turn_off", "toggle", "lock", "unlock"],
                     },
                     "target": {"type": "string"},
                     "protocol": {"type": "string", "enum": ["home_assistant", "shelly", "wled", "webhook"]},
@@ -250,6 +250,25 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "target": {"type": "string", "description": "Note filename, file search query, or folder path"},
                 },
                 "required": ["app"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "task_plan",
+            "description": "Declare and track a multi-step mission shown live in the HUD. ALWAYS call action='create' with the ordered steps before starting any job that needs 3+ tool calls, then action='update' (1-based index, status done/failed/skipped) as each step finishes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["create", "update", "list", "clear"]},
+                    "goal": {"type": "string"},
+                    "steps": {"type": "array", "items": {"type": "string"}},
+                    "index": {"type": "integer"},
+                    "status": {"type": "string", "enum": ["pending", "running", "done", "failed", "skipped"]},
+                    "note": {"type": "string"},
+                },
+                "required": ["action"],
             },
         },
     },

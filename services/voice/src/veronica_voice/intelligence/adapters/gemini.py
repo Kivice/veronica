@@ -1,6 +1,7 @@
 """Google Gemini Modern Pipeline Adapter (Gemini 3.x / 2.5 Flash & Pro with Auto-Discovery)."""
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import re
@@ -175,6 +176,8 @@ class GeminiAdapter(BaseModelAdapter):
                                         fn_name = fc.get("name", "")
                                         fn_args = fc.get("args") or {}
                                         res = tool_executor(fn_name, fn_args)
+                                        if inspect.isawaitable(res):
+                                            res = await res
                                         fn_response_parts.append({
                                             "functionResponse": {
                                                 "name": fn_name,

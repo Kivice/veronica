@@ -82,6 +82,49 @@
   const wsUrlInput = document.getElementById("wsUrlInput");
   const wsTokenInput = document.getElementById("wsTokenInput");
 
+  // Task Planner DOM elements
+  const taskPlanPanel = document.getElementById("taskPlanPanel");
+  const planGoalText = document.getElementById("planGoalText");
+  const planProgressPill = document.getElementById("planProgressPill");
+  const planProgressFill = document.getElementById("planProgressFill");
+  const planStepsContainer = document.getElementById("planStepsContainer");
+  const clearPlanBtn = document.getElementById("clearPlanBtn");
+
+  // Approval Gate DOM elements
+  const approvalModal = document.getElementById("approvalModal");
+  const approvalToolTag = document.getElementById("approvalToolTag");
+  const approvalRiskBadge = document.getElementById("approvalRiskBadge");
+  const approvalReasonText = document.getElementById("approvalReasonText");
+  const approvalArgsPreview = document.getElementById("approvalArgsPreview");
+  const approvalTimerFill = document.getElementById("approvalTimerFill");
+  const approvalTimerText = document.getElementById("approvalTimerText");
+  const approvalAllowOnceBtn = document.getElementById("approvalAllowOnceBtn");
+  const approvalAlwaysBtn = document.getElementById("approvalAlwaysBtn");
+  const approvalDenyOnceBtn = document.getElementById("approvalDenyOnceBtn");
+  const approvalNeverBtn = document.getElementById("approvalNeverBtn");
+
+  // Audit Logs DOM elements
+  const auditModal = document.getElementById("auditModal");
+  const auditLogBtn = document.getElementById("auditLogBtn");
+  const closeAuditBtn = document.getElementById("closeAuditBtn");
+  const tabAuditEvents = document.getElementById("tabAuditEvents");
+  const tabAppLogs = document.getElementById("tabAppLogs");
+  const auditSearchInput = document.getElementById("auditSearchInput");
+  const refreshAuditBtn = document.getElementById("refreshAuditBtn");
+  const auditEventsView = document.getElementById("auditEventsView");
+  const appLogsView = document.getElementById("appLogsView");
+  const auditEventsList = document.getElementById("auditEventsList");
+  const appLogsPre = document.getElementById("appLogsPre");
+
+  // UI Polish: Contrast & Font Scaling DOM elements
+  const contrastBtn = document.getElementById("contrastBtn");
+  const fontScaleBtn = document.getElementById("fontScaleBtn");
+  const fontScaleLabel = document.getElementById("fontScaleLabel");
+
+  // Tactical Deck Buttons
+  const checkCamBtn = document.getElementById("checkCamBtn");
+  const discoverIotBtn = document.getElementById("discoverIotBtn");
+
   // Load saved settings
   groqKeyInput.value = localStorage.getItem("veronica_groq_key") || "";
   openaiKeyInput.value = localStorage.getItem("veronica_openai_key") || "";
@@ -202,6 +245,25 @@
       gain.connect(audioCtx.destination);
       osc.start(now);
       osc.stop(now + 0.3);
+    },
+
+    alert: function () {
+      if (sfxMuted) return;
+      initAudioContext();
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      [580, 880].forEach(function (freq, idx) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+        gain.gain.setValueAtTime(0.12, now + idx * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.18);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now + idx * 0.12);
+        osc.stop(now + idx * 0.12 + 0.2);
+      });
     },
   };
 
@@ -533,6 +595,10 @@
         loadMemory();
         break;
 
+      case "approval.request":
+        showApprovalModal(frame.payload);
+        break;
+
       case "pong":
         const rtt = (performance.now() - pingStart).toFixed(1);
         pingValue.textContent = `${rtt} ms`;
@@ -570,7 +636,12 @@
         const toolName = frame.payload.tool || "";
         const res = frame.payload.result || {};
 
-        if (toolName === "launch_application" || toolName.startsWith("launch:")) {
+        if (toolName === "task_plan" || res.plan !== undefined) {
+          toolBadge.textContent = `📋 Plan (${res.action || "mission"} ${res.progress || ""})`;
+          renderTaskPlan(res);
+        } else if (toolName === "camera_snapshot" || toolName.startsWith("camera:")) {
+          toolBadge.textContent = `📹 Camera Recon`;
+        } else if (toolName === "launch_application" || toolName.startsWith("launch:")) {
           const rawApp = res.app || toolName.split(":")[1] || "App";
           const display = rawApp.toLowerCase() === "vscode" ? "VS Code" : rawApp.charAt(0).toUpperCase() + rawApp.slice(1);
           toolBadge.textContent = res.status === "error" ? `⚠️ ${res.message || display}` : `🚀 Launched ${display}`;
@@ -613,6 +684,9 @@
           if (cmdOutput && Array.isArray(res.recent_logs)) {
             cmdOutput.textContent = res.recent_logs.slice(-8).join("\n");
           }
+          currentAuditData.events = res.recent_audit_events || [];
+          currentAuditData.logs = res.recent_logs || [];
+          renderAuditUI();
         } else if (toolName === "telemetry") {
           toolBadge.textContent = `⚡ Telemetry Synced`;
         } else if (toolName === "workspace_macro") {
@@ -916,6 +990,7 @@
     wakeWordActive = !wakeWordActive;
     wakeWordBtn.classList.toggle("active", wakeWordActive);
     wakeWordLabel.textContent = wakeWordActive ? "WAKE WORD: ON" : "WAKE WORD: OFF";
+    localStorage.setItem("veronica_wake_word", wakeWordActive ? "true" : "false");
     if (wakeWordActive) {
       sfx.confirm();
       startWakeWordListener();
@@ -1320,6 +1395,326 @@
       );
     }
   });
+
+  // --- Autonomous Multi-Step Task Planner ---
+  function renderTaskPlan(res) {
+    if (!taskPlanPanel) return;
+    const act = (res.action || "").toLowerCase();
+    const steps = Array.isArray(res.plan) ? res.plan : [];
+
+    if (act === "clear" || steps.length === 0) {
+      taskPlanPanel.style.display = "none";
+      return;
+    }
+
+    taskPlanPanel.style.display = "block";
+    if (planGoalText) planGoalText.textContent = res.goal || "Autonomous Objective";
+    const doneCount = steps.filter(s => s.status === "done" || s.status === "skipped").length;
+    if (planProgressPill) planProgressPill.textContent = res.progress || `${doneCount}/${steps.length}`;
+
+    const parts = (res.progress || "").split("/");
+    let pct = 0;
+    if (parts.length === 2 && Number(parts[1]) > 0) {
+      pct = Math.round((Number(parts[0]) / Number(parts[1])) * 100);
+    } else {
+      pct = Math.round((doneCount / Math.max(1, steps.length)) * 100);
+    }
+    if (planProgressFill) planProgressFill.style.width = Math.min(100, Math.max(0, pct)) + "%";
+
+    if (planStepsContainer) {
+      planStepsContainer.innerHTML = "";
+      steps.forEach(function (step, idx) {
+        const item = document.createElement("div");
+        const st = (step.status || "pending").toLowerCase();
+        item.className = `plan-step-item step-${st}`;
+
+        let icon = "○";
+        if (st === "running") icon = "⚡";
+        else if (st === "done") icon = "✓";
+        else if (st === "failed") icon = "✗";
+        else if (st === "skipped") icon = "↷";
+
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "plan-step-status-icon";
+        iconSpan.textContent = icon;
+
+        const bodyDiv = document.createElement("div");
+        bodyDiv.className = "plan-step-body";
+
+        const textDiv = document.createElement("div");
+        textDiv.className = "plan-step-text";
+        textDiv.textContent = `${idx + 1}. ${step.text || "Step"}`;
+        bodyDiv.appendChild(textDiv);
+
+        if (step.note) {
+          const noteDiv = document.createElement("div");
+          noteDiv.className = "plan-step-note";
+          noteDiv.textContent = step.note;
+          bodyDiv.appendChild(noteDiv);
+        }
+
+        item.appendChild(iconSpan);
+        item.appendChild(bodyDiv);
+        planStepsContainer.appendChild(item);
+      });
+    }
+  }
+
+  if (clearPlanBtn) {
+    clearPlanBtn.addEventListener("click", function () {
+      executeTool("task_plan", { action: "clear" });
+      if (taskPlanPanel) taskPlanPanel.style.display = "none";
+    });
+  }
+
+  // --- Action Approval Gate Modal ---
+  let activeApprovalTimer = null;
+  let currentApprovalRequestId = null;
+
+  function showApprovalModal(payload) {
+    if (!approvalModal) return;
+    sfx.alert();
+    currentApprovalRequestId = payload.request_id || "";
+
+    if (approvalToolTag) approvalToolTag.textContent = "TOOL: " + (payload.tool || payload.tool_name || "ACTION").toUpperCase();
+    if (approvalRiskBadge) approvalRiskBadge.textContent = (payload.risk_level || "CRITICAL ACTION").toUpperCase();
+    if (approvalReasonText) approvalReasonText.textContent = payload.reason || payload.action_summary || "Directive requires operator consent.";
+    if (approvalArgsPreview) {
+      try {
+        approvalArgsPreview.textContent = JSON.stringify(payload.args || {}, null, 2);
+      } catch (e) {
+        approvalArgsPreview.textContent = String(payload.args || "{}");
+      }
+    }
+
+    if (activeApprovalTimer) clearInterval(activeApprovalTimer);
+
+    const totalSecs = Math.max(5, Math.round(Number(payload.timeout_s || 45)));
+    let remaining = totalSecs;
+    if (approvalTimerText) approvalTimerText.textContent = remaining + "s";
+    if (approvalTimerFill) approvalTimerFill.style.width = "100%";
+
+    activeApprovalTimer = setInterval(function () {
+      remaining -= 1;
+      if (approvalTimerText) approvalTimerText.textContent = Math.max(0, remaining) + "s";
+      if (approvalTimerFill) approvalTimerFill.style.width = ((remaining / totalSecs) * 100) + "%";
+
+      if (remaining <= 0) {
+        clearInterval(activeApprovalTimer);
+        activeApprovalTimer = null;
+        sendApprovalDecision("deny");
+      }
+    }, 1000);
+
+    approvalModal.classList.add("open");
+  }
+
+  function sendApprovalDecision(decision) {
+    if (activeApprovalTimer) {
+      clearInterval(activeApprovalTimer);
+      activeApprovalTimer = null;
+    }
+    if (approvalModal) approvalModal.classList.remove("open");
+
+    if (ws && isConnected && currentApprovalRequestId) {
+      ws.send(JSON.stringify({
+        v: 1,
+        id: "appr_" + Date.now(),
+        type: "approval.response",
+        payload: {
+          request_id: currentApprovalRequestId,
+          decision: decision,
+        },
+      }));
+    }
+    currentApprovalRequestId = null;
+  }
+
+  if (approvalAllowOnceBtn) approvalAllowOnceBtn.addEventListener("click", () => sendApprovalDecision("allow_once"));
+  if (approvalAlwaysBtn) approvalAlwaysBtn.addEventListener("click", () => sendApprovalDecision("always"));
+  if (approvalDenyOnceBtn) approvalDenyOnceBtn.addEventListener("click", () => sendApprovalDecision("deny"));
+  if (approvalNeverBtn) approvalNeverBtn.addEventListener("click", () => sendApprovalDecision("never"));
+
+  // --- Tactical Audit Trail & Logs ---
+  const currentAuditData = { events: [], logs: [] };
+
+  function fetchAuditLogs() {
+    executeTool("get_veronica_logs", { lines: 60 });
+  }
+
+  function renderAuditUI() {
+    renderAuditEvents(currentAuditData.events, (auditSearchInput ? auditSearchInput.value : ""));
+    if (appLogsPre) {
+      appLogsPre.textContent = (currentAuditData.logs || []).join("\n") || "No logs available.";
+      appLogsPre.scrollTop = appLogsPre.scrollHeight;
+    }
+  }
+
+  function renderAuditEvents(events, filter) {
+    if (!auditEventsList) return;
+    auditEventsList.innerHTML = "";
+    const needle = (filter || "").toLowerCase().trim();
+
+    const filtered = (events || []).filter(function (ev) {
+      if (!needle) return true;
+      const str = ((ev.category || "") + " " + (ev.action || "") + " " + (ev.status || "") + " " + JSON.stringify(ev.details || {})).toLowerCase();
+      return str.includes(needle);
+    });
+
+    if (filtered.length === 0) {
+      auditEventsList.innerHTML = `<div class="audit-empty-state">${needle ? "No matching audit events found" : "No audit events recorded yet"}</div>`;
+      return;
+    }
+
+    filtered.slice().reverse().forEach(function (ev) {
+      const card = document.createElement("div");
+      card.className = "audit-event-card";
+
+      const top = document.createElement("div");
+      top.className = "audit-card-top";
+
+      const title = document.createElement("div");
+      title.className = "audit-card-title";
+
+      const catTag = document.createElement("span");
+      catTag.className = "audit-category-tag";
+      catTag.textContent = (ev.category || "AUDIT").toUpperCase();
+
+      const actText = document.createElement("span");
+      actText.textContent = ev.action || "";
+
+      const badge = document.createElement("span");
+      const st = (ev.status || "info").toLowerCase();
+      badge.className = `audit-badge badge-${st}`;
+      badge.textContent = st;
+
+      title.appendChild(catTag);
+      if (ev.action && ev.action !== ev.category) title.appendChild(actText);
+      title.appendChild(badge);
+
+      const timeSpan = document.createElement("span");
+      timeSpan.className = "audit-card-time";
+      try {
+        const d = new Date(ev.timestamp);
+        timeSpan.textContent = d.toLocaleTimeString() + "." + String(d.getMilliseconds()).padStart(3, "0");
+      } catch (e) {
+        timeSpan.textContent = ev.timestamp || "";
+      }
+
+      top.appendChild(title);
+      top.appendChild(timeSpan);
+      card.appendChild(top);
+
+      if (ev.details && Object.keys(ev.details).length > 0) {
+        const details = document.createElement("div");
+        details.className = "audit-card-details";
+        details.textContent = JSON.stringify(ev.details, null, 2);
+        card.appendChild(details);
+      }
+
+      auditEventsList.appendChild(card);
+    });
+  }
+
+  if (auditLogBtn) {
+    auditLogBtn.addEventListener("click", function () {
+      sfx.blip();
+      fetchAuditLogs();
+      if (auditModal) auditModal.classList.add("open");
+    });
+  }
+
+  if (closeAuditBtn) {
+    closeAuditBtn.addEventListener("click", function () {
+      if (auditModal) auditModal.classList.remove("open");
+    });
+  }
+
+  if (refreshAuditBtn) {
+    refreshAuditBtn.addEventListener("click", function () {
+      sfx.blip();
+      fetchAuditLogs();
+    });
+  }
+
+  if (auditSearchInput) {
+    auditSearchInput.addEventListener("input", function () {
+      renderAuditEvents(currentAuditData.events, this.value);
+    });
+  }
+
+  if (tabAuditEvents && tabAppLogs) {
+    tabAuditEvents.addEventListener("click", function () {
+      tabAuditEvents.classList.add("active");
+      tabAppLogs.classList.remove("active");
+      if (auditEventsView) auditEventsView.classList.add("active");
+      if (appLogsView) appLogsView.classList.remove("active");
+    });
+    tabAppLogs.addEventListener("click", function () {
+      tabAppLogs.classList.add("active");
+      tabAuditEvents.classList.remove("active");
+      if (appLogsView) appLogsView.classList.add("active");
+      if (auditEventsView) auditEventsView.classList.remove("active");
+    });
+  }
+
+  // --- UI Polish: Contrast, Font Scale, Deck Buttons & Wake-Word Persistence ---
+  const savedContrast = localStorage.getItem("veronica_contrast") === "true";
+  if (savedContrast) {
+    document.body.classList.add("high-contrast");
+    if (contrastBtn) contrastBtn.classList.add("active");
+  }
+
+  if (contrastBtn) {
+    contrastBtn.addEventListener("click", function () {
+      const active = document.body.classList.toggle("high-contrast");
+      contrastBtn.classList.toggle("active", active);
+      localStorage.setItem("veronica_contrast", active ? "true" : "false");
+      sfx.blip();
+    });
+  }
+
+  const fontScales = ["normal", "font-large", "font-xl"];
+  let currentFontIdx = 0;
+  const savedFont = localStorage.getItem("veronica_font_scale") || "normal";
+  if (savedFont === "font-large") {
+    currentFontIdx = 1;
+    document.body.classList.add("font-large");
+    if (fontScaleLabel) fontScaleLabel.textContent = "A++";
+  } else if (savedFont === "font-xl") {
+    currentFontIdx = 2;
+    document.body.classList.add("font-xl");
+    if (fontScaleLabel) fontScaleLabel.textContent = "A+++";
+  }
+
+  if (fontScaleBtn) {
+    fontScaleBtn.addEventListener("click", function () {
+      fontScales.forEach(cls => { if (cls !== "normal") document.body.classList.remove(cls); });
+      currentFontIdx = (currentFontIdx + 1) % fontScales.length;
+      const nextScale = fontScales[currentFontIdx];
+      if (nextScale !== "normal") {
+        document.body.classList.add(nextScale);
+      }
+      localStorage.setItem("veronica_font_scale", nextScale);
+      if (fontScaleLabel) {
+        fontScaleLabel.textContent = nextScale === "normal" ? "A+" : (nextScale === "font-large" ? "A++" : "A+++");
+      }
+      sfx.blip();
+    });
+  }
+
+  const savedWakeWord = localStorage.getItem("veronica_wake_word") === "true";
+  if (savedWakeWord) {
+    wakeWordActive = true;
+    if (wakeWordBtn) {
+      wakeWordBtn.classList.add("active");
+      if (wakeWordLabel) wakeWordLabel.textContent = "WAKE WORD: ON";
+    }
+    setTimeout(startWakeWordListener, 1200);
+  }
+
+  if (checkCamBtn) checkCamBtn.addEventListener("click", () => sendUserMessage("Check the camera"));
+  if (discoverIotBtn) discoverIotBtn.addEventListener("click", () => sendUserMessage("Discover LAN IoT devices"));
 
   // Initial Connection
   connectWs();

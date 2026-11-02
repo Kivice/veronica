@@ -4,11 +4,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from typing import Any, AsyncIterator, Callable, Optional
 
+from ..approvals import approval_manager, classify_risk
 from ..audit_logger import record_audit_event, setup_veronica_logging
 from ..tools import (
     capture_screen_base64,
+    clipboard_tool,
     get_credentials,
     memory_store,
     save_credentials,
@@ -58,6 +61,12 @@ class IntelligenceEngine:
         self.intent_router = IntentRouter()
         self.vision = VisionEngine(gemini_api_key=gemini_key, openai_api_key=openai_key)
         self.tool_callback: Optional[Callable[[str, dict[str, Any]], Any]] = None
+        # async callable(payload) used to ask the connected UI for per-action approval
+        self.approval_sender: Optional[Callable[[dict[str, Any]], Any]] = None
+
+    def set_approval_sender(self, sender: Optional[Callable[[dict[str, Any]], Any]]) -> None:
+        """Register the UI channel used for 'allow once / always / never' prompts."""
+        self.approval_sender = sender
 
     def set_tool_callback(self, callback: Optional[Callable[[str, dict[str, Any]], Any]]) -> None:
         """Register a callback for real-time notification when tools execute."""
@@ -221,11 +230,55 @@ class IntelligenceEngine:
                 self.context.add_assistant_message(reply_text)
             return
 
+        # 2a. LAN camera recon ("check the front porch camera")
+        cam_m = re.search(
+            r"\b(?:check|look\s+at|show\s+me|view|what'?s\s+on)\s+(?:the\s+|my\s+)?([a-z0-9 _\-]{2,30}?)\s+cam(?:era)?\b",
+            clean.lower(),
+        )
+        if cam_m:
+            from ..iot import camera_snapshot
+
+            cam_name = cam_m.group(1).strip()
+            snap = await asyncio.to_thread(camera_snapshot, cam_name)
+            if self.tool_callback:
+                try:
+                    self.tool_callback("iot_control", {k: v for k, v in snap.items() if k != "image_base64"} | {"action": "camera_snapshot", "target": cam_name})
+                except Exception:
+                    pass
+            cam_reply: list[str] = []
+            if snap.get("status") == "success":
+                async for chunk in self.analyze_screen(
+                    snap["image_base64"],
+                    prompt=(
+                        f"This is a live frame from the user's '{cam_name}' camera. Briefly describe what is visible, "
+                        "flag any people, vehicles, packages or anything unusual, and say if all looks normal."
+                    ),
+                ):
+                    cam_reply.append(chunk)
+                    yield chunk
+            else:
+                msg = snap.get("message", "Camera unavailable.")
+                for word in msg.split(" "):
+                    cam_reply.append(word + " ")
+                    yield word + " "
+                    await asyncio.sleep(0.01)
+            text_out = "".join(cam_reply).strip()
+            if text_out:
+                self.context.add_user_message(clean)
+                self.context.add_assistant_message(text_out)
+            return
+
         # 2b. Vision / Screen Recon fast-path check
         if analysis.intent == IntentType.VISION_INSPECT:
             img_b64 = capture_screen_base64() or "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            vis_prompt = clean
+            low_c = clean.lower()
+            if any(w in low_c for w in ("clipboard", "looking at", "explain")):
+                clip_txt = (clipboard_tool("get").get("content") or "").strip()
+                if clip_txt:
+                    vis_prompt = f"{clean}\n\n[Clipboard contents]:\n{clip_txt[:2000]}"
             vis_reply: list[str] = []
-            async for chunk in self.analyze_screen(img_b64, prompt=clean):
+            async for chunk in self.analyze_screen(img_b64, prompt=vis_prompt):
                 vis_reply.append(chunk)
                 yield chunk
             reply_text = "".join(vis_reply).strip()
@@ -290,8 +343,25 @@ class IntelligenceEngine:
             messages = self.context.get_messages_for_provider(new_prompt=clean)
             gemini_tools = get_gemini_function_declarations()
 
-            def _agentic_tool_exec(fn_name: str, fn_args: dict[str, Any]) -> dict[str, Any]:
-                res = dispatch_tool_call(fn_name, fn_args)
+            async def _agentic_tool_exec(fn_name: str, fn_args: dict[str, Any]) -> dict[str, Any]:
+                risk = classify_risk(fn_name, fn_args)
+                if risk is not None:
+                    key, reason = risk
+                    allowed = await approval_manager.request(
+                        key, fn_name, reason, fn_args, self.approval_sender
+                    )
+                    if not allowed:
+                        denied = {
+                            "status": "denied",
+                            "message": f"The user declined this action ({reason}). Do not retry it; offer an alternative.",
+                        }
+                        if self.tool_callback:
+                            try:
+                                self.tool_callback(fn_name, {**denied, "action": fn_args.get("action", "")})
+                            except Exception:
+                                pass
+                        return denied
+                res = await asyncio.to_thread(dispatch_tool_call, fn_name, fn_args)
                 record_audit_event("agentic_tool", fn_name, res.get("status", "success"), {"args": fn_args})
                 if self.tool_callback:
                     try:

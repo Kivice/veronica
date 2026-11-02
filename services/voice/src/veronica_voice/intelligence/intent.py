@@ -179,7 +179,12 @@ class IntentRouter:
             )
 
         # 4. Vision / Screen Inspection
-        if any(w in lower for w in ("analyze screen", "analyze my screen", "what is on my screen", "what's on my screen", "inspect screen", "look at my screen", "screen recon")):
+        if any(w in lower for w in (
+            "analyze screen", "analyze my screen", "what is on my screen", "what's on my screen", "inspect screen",
+            "look at my screen", "screen recon", "explain what i'm looking at", "explain what i am looking at",
+            "what am i looking at", "explain this screen", "explain my screen", "explain my clipboard",
+            "explain the clipboard", "explain what's on my clipboard",
+        )):
             return IntentAnalysis(
                 intent=IntentType.VISION_INSPECT,
                 confidence=0.95,

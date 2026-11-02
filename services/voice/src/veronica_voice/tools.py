@@ -1226,6 +1226,68 @@ def workspace_macro(name: str) -> dict[str, Any]:
     return {"status": "error", "message": f"Unknown workspace macro: '{name}'"}
 
 
+_task_plan: dict[str, Any] = {"goal": "", "steps": []}
+_plan_lock = threading.Lock()
+PLAN_STATUSES = ("pending", "running", "done", "failed", "skipped")
+
+
+def task_plan(
+    action: str = "list",
+    goal: str = "",
+    steps: list[str] | None = None,
+    index: int | None = None,
+    status: str = "",
+    note: str = "",
+) -> dict[str, Any]:
+    """Multi-step task planner shown live in the HUD.
+
+    create: declare `goal` and ordered `steps` before starting a multi-step job.
+    update: set step `index` (1-based) to a status (pending/running/done/failed/skipped).
+    list / clear: inspect or reset the plan.
+    """
+    act = action.lower().strip()
+    with _plan_lock:
+        if act == "create":
+            clean_steps = [str(s).strip() for s in (steps or []) if str(s).strip()][:12]
+            if not clean_steps:
+                return {"status": "error", "message": "Provide at least one step."}
+            _task_plan["goal"] = goal.strip() or "Mission"
+            _task_plan["steps"] = [{"text": s, "status": "pending", "note": ""} for s in clean_steps]
+            _task_plan["steps"][0]["status"] = "running"
+            record_audit_event("plan", "create", "success", {"goal": _task_plan["goal"], "steps": len(clean_steps)})
+        elif act == "update":
+            if index is None or not (1 <= int(index) <= len(_task_plan["steps"])):
+                return {"status": "error", "message": "Invalid step index."}
+            st = status.lower().strip()
+            if st not in PLAN_STATUSES:
+                return {"status": "error", "message": f"Status must be one of {PLAN_STATUSES}."}
+            idx = int(index) - 1
+            _task_plan["steps"][idx]["status"] = st
+            if note:
+                _task_plan["steps"][idx]["note"] = note[:200]
+            # auto-advance: next pending step becomes 'running' when this one completes
+            if st in ("done", "skipped"):
+                for nxt in _task_plan["steps"][idx + 1:]:
+                    if nxt["status"] == "pending":
+                        nxt["status"] = "running"
+                        break
+        elif act == "clear":
+            _task_plan["goal"] = ""
+            _task_plan["steps"] = []
+        elif act != "list":
+            return {"status": "error", "message": f"Unknown plan action '{action}'"}
+
+        steps_now = [dict(s) for s in _task_plan["steps"]]
+        done = sum(1 for s in steps_now if s["status"] in ("done", "skipped"))
+        return {
+            "status": "success",
+            "action": act,
+            "goal": _task_plan["goal"],
+            "plan": steps_now,
+            "progress": f"{done}/{len(steps_now)}",
+        }
+
+
 def execute_tool(tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
     """Universal dispatcher for Veronica tools."""
     name = tool_name.lower().strip()
@@ -1297,4 +1359,23 @@ def execute_tool(tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
             content=str(params.get("content", "")),
             target=str(params.get("target", "")),
         )
+    elif name in ("task_plan", "plan"):
+        return task_plan(
+            action=str(params.get("action", "list")),
+            goal=str(params.get("goal", "")),
+            steps=params.get("steps"),
+            index=params.get("index"),
+            status=str(params.get("status", "")),
+            note=str(params.get("note", "")),
+        )
+    elif name in ("camera_snapshot", "camera"):
+        from .iot import camera_snapshot
+        res = camera_snapshot(str(params.get("device", "")))
+        res.pop("image_base64", None)
+        return res
+    elif name in ("approvals", "approval_policy"):
+        from .approvals import approval_manager
+        if str(params.get("action", "")) == "reset":
+            approval_manager.reset()
+        return {"status": "success", "policy": approval_manager._load()}
     return {"status": "error", "message": f"Unknown tool: '{tool_name}'"}

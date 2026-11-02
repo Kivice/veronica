@@ -113,6 +113,142 @@ def _probe_tcp(host: str, port: int = 80, timeout: float = 0.35) -> bool:
         return False
 
 
+def _ssdp_discover(timeout: float = 1.8) -> list[dict[str, str]]:
+    """Stdlib SSDP/UPnP M-SEARCH on the local network (no third-party deps)."""
+    msg = (
+        "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n"
+        'MAN: "ssdp:discover"\r\nMX: 1\r\nST: ssdp:all\r\n\r\n'
+    ).encode()
+    found: dict[str, dict[str, str]] = {}
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    try:
+        sock.settimeout(0.4)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        sock.sendto(msg, ("239.255.255.250", 1900))
+        import time as _t
+        end = _t.time() + timeout
+        while _t.time() < end:
+            try:
+                data, addr = sock.recvfrom(4096)
+            except socket.timeout:
+                continue
+            ip = addr[0]
+            if not is_safe_iot_endpoint(ip):
+                continue
+            text = data.decode("utf-8", errors="ignore")
+            server = next((l.split(":", 1)[1].strip() for l in text.splitlines() if l.lower().startswith("server:")), "")
+            found.setdefault(ip, {"ip": ip, "server": server})
+    except Exception:
+        pass
+    finally:
+        sock.close()
+    return list(found.values())
+
+
+def _identify_device(ip: str) -> dict[str, str]:
+    """Probe well-known local APIs to classify a host (Shelly, WLED, Home Assistant)."""
+    info = {"ip": ip, "type": "unknown", "name": ip}
+    probes = (
+        ("shelly", f"http://{ip}/shelly", lambda j: j.get("type") or j.get("model") or j.get("id")),
+        ("wled", f"http://{ip}/json/info", lambda j: j.get("name") if j.get("ver") else None),
+    )
+    try:
+        with httpx.Client(timeout=0.9) as client:
+            for dtype, url, pick in probes:
+                try:
+                    r = client.get(url)
+                    if r.status_code == 200:
+                        label = pick(r.json())
+                        if label:
+                            info.update({"type": dtype, "name": str(label)})
+                            return info
+                except Exception:
+                    continue
+            try:
+                r = client.get(f"http://{ip}:8123/manifest.json")
+                if r.status_code == 200 and "home assistant" in r.text.lower():
+                    info.update({"type": "homeassistant_hub", "name": "Home Assistant"})
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return info
+
+
+def discover_devices(register: bool = True, timeout_s: float = 1.8) -> dict[str, Any]:
+    """Discover IoT devices on the LAN (SSDP + API fingerprinting) and add recognized ones to the registry."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    hosts = _ssdp_discover(timeout=timeout_s)
+    ips = [h["ip"] for h in hosts]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        identified = list(pool.map(_identify_device, ips)) if ips else []
+    reg = _load_registry()
+    added: list[str] = []
+    if register:
+        for d in identified:
+            if d["type"] in ("shelly", "wled"):
+                key = f"{d['type']}_{d['ip'].replace('.', '_')}"
+                if key not in reg:
+                    reg[key] = {"name": d["name"], "type": d["type"], "host": d["ip"], "room": "discovered", "high_risk": False}
+                    added.append(key)
+        if added:
+            _save_registry(reg)
+    record_audit_event("iot", "discover", "success", {"hosts": len(ips), "added": added})
+    return {
+        "status": "success",
+        "action": "discover",
+        "discovered_count": len(identified),
+        "devices": identified,
+        "registered": added,
+        "message": f"Discovered {len(identified)} LAN hosts; registered {len(added)} new controllable devices.",
+    }
+
+
+def camera_snapshot(device: str) -> dict[str, Any]:
+    """Fetch a JPEG snapshot from a registered LAN camera (registry entry with type 'camera' and 'snapshot_url')."""
+    import base64
+
+    reg = _load_registry()
+    key = device.lower().strip().replace(" ", "_")
+    match = None
+    cams = {k: v for k, v in reg.items() if str(v.get("type", "")).lower() == "camera"}
+    for k, v in cams.items():
+        if key and (key == k or key in k or key in str(v.get("name", "")).lower().replace(" ", "_")):
+            match = (k, v)
+            break
+    if match is None and len(cams) == 1:
+        match = next(iter(cams.items()))
+    if match is None:
+        return {
+            "status": "error",
+            "message": "No matching camera. Register one with iot_control(action='register', device_type='camera', host='http://192.168.x.x/snapshot.jpg').",
+        }
+    k, v = match
+    url = v.get("snapshot_url") or v.get("host", "")
+    if url and "://" not in url:
+        url = f"http://{url}"
+    if not url or not is_safe_iot_endpoint(url):
+        record_audit_event("iot_security", "camera_blocked", "blocked", {"device": k})
+        return {"status": "blocked", "message": "Camera snapshot URL must be on the private LAN."}
+    try:
+        with httpx.Client(timeout=4.0) as client:
+            r = client.get(url)
+            r.raise_for_status()
+            if len(r.content) > 4_000_000:
+                return {"status": "error", "message": "Snapshot too large."}
+            record_audit_event("iot", "camera_snapshot", "success", {"device": k, "bytes": len(r.content)})
+            return {
+                "status": "success",
+                "device": v.get("name", k),
+                "image_base64": base64.b64encode(r.content).decode(),
+                "bytes": len(r.content),
+            }
+    except Exception as exc:
+        record_audit_event("iot", "camera_snapshot", "offline", {"device": k, "error": str(exc)})
+        return {"status": "offline", "message": f"Camera '{v.get('name', k)}' unreachable: {exc}"}
+
+
 def iot_control(
     action: str = "list",
     device: str = "",
@@ -176,6 +312,9 @@ def iot_control(
             "results": scan_results,
             "message": f"Scanned {len(scan_results)} tactical IoT endpoints on local network.",
         }
+
+    if clean_act == "discover":
+        return discover_devices()
 
     if clean_act == "register":
         dev_key = device.lower().strip().replace(" ", "_")

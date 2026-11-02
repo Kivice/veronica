@@ -25,6 +25,7 @@ CLIENT_TYPES = frozenset({
     "screen.analyze",
     "wake_word.detected",
     "window.command",
+    "approval.response",
 })
 # Service -> client
 SERVER_TYPES = frozenset({
@@ -40,6 +41,7 @@ SERVER_TYPES = frozenset({
     "error",
     "wake_word.detected",
     "window.command",
+    "approval.request",
 })
 
 
