@@ -493,6 +493,23 @@ def _resolve_and_start(target: str) -> bool:
     return True
 
 
+def is_launchable(app_name: str) -> bool:
+    """Cheap check that a free-form launch target is a real app/site/folder (avoids launching words like 'day' from chat)."""
+    clean = re.sub(r"^(?:the|my)\s+", "", app_name.strip().lower())
+    if not clean:
+        return False
+    if (
+        clean in APP_SHORTCUTS
+        or clean in SITE_SHORTCUTS
+        or clean in APP_PROCESS_MAP
+        or clean in ("downloads", "download", "documents", "desktop", "pictures")
+        or clean.startswith(("http://", "https://", "www."))
+        or DOMAIN_LIKE_RE.match(clean)
+    ):
+        return True
+    return bool(shutil.which(clean) or shutil.which(f"{clean}.exe"))
+
+
 def launch_application(app_name: str) -> dict[str, Any]:
     """Launch a Windows application, user folder, or website URL."""
     clean = app_name.strip().lower()

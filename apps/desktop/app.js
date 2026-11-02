@@ -340,6 +340,123 @@
   }
   drawCore();
 
+  // --- Resizable Layout: draggable panel dividers, collapse, persistence, responsive core canvas ---
+  (function initResizableLayout() {
+    const grid = document.querySelector(".hud-grid");
+    const splitLeft = document.getElementById("splitLeft");
+    const splitRight = document.getElementById("splitRight");
+    const resetBtn = document.getElementById("resetLayoutBtn");
+    const stage = document.querySelector(".core-stage");
+    const transcript = document.getElementById("transcriptBox");
+    if (!grid) return;
+
+    const KEY = "veronica.layout.v1";
+    const MIN_W = 200;
+    const MAX_W = 560;
+    const DEFAULTS = { left: 310, right: 310, leftCollapsed: false, rightCollapsed: false, transcriptH: 130 };
+    let layout = Object.assign({}, DEFAULTS);
+    try {
+      Object.assign(layout, JSON.parse(localStorage.getItem(KEY) || "{}"));
+    } catch (e) {}
+
+    function save() {
+      try { localStorage.setItem(KEY, JSON.stringify(layout)); } catch (e) {}
+    }
+
+    function clampWidths() {
+      // Always leave room for the center column (>= 320px)
+      const total = grid.clientWidth - 32 - 24;
+      const maxSide = Math.max(MIN_W, Math.min(MAX_W, (total - 320) / 2));
+      layout.left = Math.round(Math.min(maxSide, Math.max(MIN_W, layout.left)));
+      layout.right = Math.round(Math.min(maxSide, Math.max(MIN_W, layout.right)));
+    }
+
+    function apply() {
+      clampWidths();
+      grid.style.setProperty("--col-left", layout.left + "px");
+      grid.style.setProperty("--col-right", layout.right + "px");
+      grid.classList.toggle("left-collapsed", !!layout.leftCollapsed);
+      grid.classList.toggle("right-collapsed", !!layout.rightCollapsed);
+      if (transcript) transcript.style.setProperty("--transcript-h", layout.transcriptH + "px");
+      fitCanvas();
+    }
+
+    function fitCanvas() {
+      if (!stage) return;
+      const size = Math.max(120, Math.floor(Math.min(stage.clientWidth, stage.clientHeight)));
+      canvas.style.width = size + "px";
+      canvas.style.height = size + "px";
+    }
+
+    function bindSplitter(el, side) {
+      if (!el) return;
+      el.addEventListener("pointerdown", function (e) {
+        if (window.innerWidth <= 860) return;
+        e.preventDefault();
+        el.setPointerCapture(e.pointerId);
+        el.classList.add("dragging");
+        document.body.classList.add("is-resizing");
+        const startX = e.clientX;
+        const startW = side === "left" ? layout.left : layout.right;
+        if (side === "left") layout.leftCollapsed = false; else layout.rightCollapsed = false;
+
+        function onMove(ev) {
+          const dx = ev.clientX - startX;
+          const next = side === "left" ? startW + dx : startW - dx;
+          if (side === "left") layout.left = next; else layout.right = next;
+          apply();
+        }
+        function onUp(ev) {
+          el.releasePointerCapture(ev.pointerId);
+          el.classList.remove("dragging");
+          document.body.classList.remove("is-resizing");
+          el.removeEventListener("pointermove", onMove);
+          el.removeEventListener("pointerup", onUp);
+          el.removeEventListener("pointercancel", onUp);
+          save();
+        }
+        el.addEventListener("pointermove", onMove);
+        el.addEventListener("pointerup", onUp);
+        el.addEventListener("pointercancel", onUp);
+      });
+      el.addEventListener("dblclick", function () {
+        if (side === "left") layout.leftCollapsed = !layout.leftCollapsed;
+        else layout.rightCollapsed = !layout.rightCollapsed;
+        apply();
+        save();
+      });
+    }
+
+    bindSplitter(splitLeft, "left");
+    bindSplitter(splitRight, "right");
+
+    if (resetBtn) {
+      resetBtn.addEventListener("click", function () {
+        layout = Object.assign({}, DEFAULTS);
+        apply();
+        save();
+      });
+    }
+
+    // Persist the transcript box height after the user drags its native resize handle
+    if (transcript) {
+      transcript.addEventListener("mouseup", function () {
+        const h = Math.round(transcript.getBoundingClientRect().height);
+        if (h >= 90 && h !== layout.transcriptH) {
+          layout.transcriptH = h;
+          save();
+        }
+      });
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(fitCanvas);
+      if (stage) ro.observe(stage);
+      ro.observe(grid);
+    }
+    window.addEventListener("resize", apply);
+    apply();
+  })();
   // --- WebSocket Client & Event Dispatcher ---
   let pingInterval = null;
   let pingStart = 0;

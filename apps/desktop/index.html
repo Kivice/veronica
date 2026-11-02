@@ -21,7 +21,7 @@
         <span class="arc-pulse"></span>
       </div>
       <div>
-        <h1 class="brand-title">VERONICA <span class="version-tag">MARK-IV</span></h1>
+        <h1 class="brand-title">VERONICA <span class="version-tag">MARK-V</span></h1>
         <p class="brand-sub">TACTICAL DESKTOP INTELLIGENCE // STARK ARCHITECTURE</p>
       </div>
     </div>
@@ -61,7 +61,10 @@
         <span class="telemetry-label">SYS_TIME</span>
         <span id="clockValue" class="telemetry-val">00:00:00</span>
       </div>
-      <button id="miniHudBtn" class="hud-toggle-pill" title="Switch to Miniature Desktop HUD" style="border-color: var(--cyan-plasma); color: var(--cyan-plasma);">
+      <button id="resetLayoutBtn" class="hud-btn-icon" title="Reset panel layout (drag the glowing dividers to resize panels; double-click a divider to collapse it)">
+        <span>⤢</span>
+      </button>
+      <button id="miniHudBtn" class="hud-toggle-pill" title="Switch to Miniature Desktop HUD" style="border-color: var(--neon-cyan); color: var(--neon-cyan);">
         <span>🗕 MINI HUD</span>
       </button>
       <button id="settingsBtn" class="hud-btn-icon" title="Assistant Configuration">
@@ -139,6 +142,9 @@
       </div>
     </aside>
 
+    <!-- Resizable divider: left panel <-> center -->
+    <div class="hud-splitter" id="splitLeft" role="separator" aria-orientation="vertical" title="Drag to resize • Double-click to collapse/expand"></div>
+
     <!-- CENTER STAGE: Holographic Reactor Core & Voice Terminal -->
     <section class="hud-center">
       <!-- 3D Holographic Core Canvas -->
@@ -210,6 +216,9 @@
         </div>
       </div>
     </section>
+
+    <!-- Resizable divider: center <-> right panel -->
+    <div class="hud-splitter" id="splitRight" role="separator" aria-orientation="vertical" title="Drag to resize • Double-click to collapse/expand"></div>
 
     <!-- RIGHT PANEL: Tactical Action Deck & Mission Tools -->
     <aside class="hud-panel deck-panel">

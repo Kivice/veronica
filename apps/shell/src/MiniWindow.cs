@@ -52,12 +52,14 @@ namespace Veronica.Shell
             Title = "VERONICA // MARK-V NATIVE SHELL";
             Width = 520;
             Height = 330;
+            MinWidth = 400;
+            MinHeight = 260;
             WindowStyle = WindowStyle.None;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
             Topmost = true;
             ShowInTaskbar = true;
-            ResizeMode = ResizeMode.NoResize;
+            ResizeMode = ResizeMode.CanResizeWithGrip;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
             Loaded += (s, e) =>

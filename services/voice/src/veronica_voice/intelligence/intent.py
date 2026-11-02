@@ -19,6 +19,7 @@ from ..tools import (
     get_system_telemetry,
     get_veronica_logs,
     iot_control,
+    is_launchable,
     launch_application,
     media_control,
     memory_store,
@@ -401,6 +402,7 @@ class IntentRouter:
         app_targets = [
             a for a in self._extract_app_targets(lower, launch_verb_pat)
             if a not in close_targets and a not in handled_apps
+            and (a in APP_KEYWORDS_MAP or is_launchable(a))
         ]
         # Implicit Spotify launch on "play spotify" (when not handled by specific song search)
         if "spotify" in lower and "play" in lower and "spotify" not in app_targets and "spotify" not in close_targets and "spotify" not in handled_apps:

@@ -86,10 +86,12 @@ async def test_workspace_macro_and_screen_vision():
     assert macro["status"] == "success"
     assert "telemetry" in macro
 
-    brain = VeronicaBrain()
-    # Test tactical offline screen inspection
+    # Hermetic offline vision check (no cloud keys -> deterministic local reconnaissance fallback)
+    from veronica_voice.intelligence.vision import VisionEngine
+
+    vision = VisionEngine(gemini_api_key="", openai_api_key="")
     chunks = []
-    async for chunk in brain.analyze_screen("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="):
+    async for chunk in vision.analyze("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", prompt="", system_prompt=""):
         chunks.append(chunk)
     analysis = "".join(chunks)
     assert "reconnaissance" in analysis.lower() or "display" in analysis.lower()
