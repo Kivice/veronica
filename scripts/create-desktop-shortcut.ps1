@@ -17,3 +17,4 @@ $shortcut.WindowStyle = 1
 $shortcut.Save()
 
 Write-Host "[SUCCESS] 1-Click Desktop Shortcut created at: $shortcutPath" -ForegroundColor Green
+

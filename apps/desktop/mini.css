@@ -1,14 +1,41 @@
-/* VERONICA // MINI HUD STYLES */
+/* =====================================================================
+   VERONICA // MINI HUD - GLASSMORPHIC STARK DESIGN SYSTEM
+   ===================================================================== */
 :root {
-  --bg-obsidian: #050811;
-  --bg-card: rgba(8, 14, 28, 0.92);
+  --bg-obsidian: #030611;
+  --bg-void: #02040a;
+  
+  /* Glassmorphism System Tokens */
+  --glass-bg-base: rgba(8, 16, 34, 0.52);
+  --glass-bg-subtle: rgba(12, 22, 46, 0.38);
+  --glass-bg-header: rgba(6, 12, 26, 0.62);
+  --glass-bg-card: rgba(14, 24, 48, 0.44);
+  --glass-bg-card-hover: rgba(22, 38, 76, 0.62);
+  --glass-bg-input: rgba(10, 18, 38, 0.55);
+  
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-highlight: rgba(255, 255, 255, 0.24);
+  --glass-border-cyan: rgba(0, 243, 255, 0.32);
+  --glass-border-cyan-bright: rgba(0, 243, 255, 0.65);
+  
+  --glass-edge-top: inset 0 1px 1px 0 rgba(255, 255, 255, 0.22);
+  --glass-edge-bottom: inset 0 -1px 1px 0 rgba(0, 243, 255, 0.12);
+  
+  --glass-blur: blur(20px) saturate(180%);
+  --glass-blur-card: blur(14px) saturate(160%);
+  --glass-blur-pill: blur(10px) saturate(150%);
+  
+  --glass-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --glass-shadow-card: 0 6px 20px rgba(0, 0, 0, 0.35);
+  
   --cyan-plasma: #00f3ff;
   --blue-reactor: #0077ff;
   --gold-stark: #ffb700;
-  --text-main: #e2f1ff;
-  --text-dim: #7090b0;
+  --text-main: #e6f7ff;
+  --text-dim: #8ba2c4;
   --border-cyan: rgba(0, 243, 255, 0.35);
   --border-glow: 0 0 16px rgba(0, 243, 255, 0.25);
+  
   --font-hud: "Rajdhani", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -22,7 +49,14 @@
 }
 
 body.mini-hud-body {
-  background: var(--bg-obsidian);
+  background-color: var(--bg-obsidian);
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(0, 119, 255, 0.24) 0%, transparent 65%),
+    radial-gradient(circle at 10% 90%, rgba(0, 243, 255, 0.16) 0%, transparent 55%),
+    radial-gradient(circle at 90% 80%, rgba(108, 92, 231, 0.18) 0%, transparent 55%),
+    linear-gradient(rgba(0, 243, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 243, 255, 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 30px 30px, 30px 30px;
   color: var(--text-main);
   font-family: var(--font-sans);
   height: 100vh;
@@ -30,8 +64,36 @@ body.mini-hud-body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-cyan);
-  box-shadow: inset 0 0 20px rgba(0, 243, 255, 0.12), var(--border-glow);
+  border: 1px solid var(--glass-border-cyan);
+  box-shadow: 
+    var(--glass-edge-top),
+    inset 0 0 20px rgba(0, 243, 255, 0.12),
+    var(--glass-shadow),
+    0 0 20px rgba(0, 243, 255, 0.22);
+  position: relative;
+}
+
+/* Ambient Holographic Glass Aurora Behind Content */
+body.mini-hud-body::before {
+  content: "";
+  position: absolute;
+  top: -20%;
+  left: -20%;
+  width: 140%;
+  height: 140%;
+  pointer-events: none;
+  background: 
+    radial-gradient(ellipse 350px 250px at 20% 30%, rgba(0, 243, 255, 0.10), transparent 70%),
+    radial-gradient(ellipse 400px 300px at 80% 70%, rgba(0, 102, 255, 0.12), transparent 70%),
+    radial-gradient(ellipse 300px 200px at 50% 90%, rgba(138, 43, 226, 0.08), transparent 70%);
+  animation: miniAuroraPulse 16s ease-in-out infinite alternate;
+  z-index: 0;
+}
+
+@keyframes miniAuroraPulse {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-15px, 10px) scale(1.05); }
+  100% { transform: translate(12px, -8px) scale(0.97); }
 }
 
 /* CRT Scanline overlay */
@@ -39,10 +101,11 @@ body.mini-hud-body::after {
   content: " ";
   position: absolute;
   top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.22) 50%);
   background-size: 100% 3px;
   pointer-events: none;
-  opacity: 0.3;
+  opacity: 0.25;
+  z-index: 10;
 }
 
 .mini-container {
@@ -52,16 +115,22 @@ body.mini-hud-body::after {
   padding: 8px 10px;
   gap: 6px;
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
-/* Header */
+/* Frosted Glass Header */
 .mini-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(0, 243, 255, 0.2);
-  padding-bottom: 4px;
+  background: var(--glass-bg-header);
+  -webkit-backdrop-filter: var(--glass-blur-card);
+  backdrop-filter: var(--glass-blur-card);
+  border: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--glass-border-cyan);
+  border-radius: 6px;
+  padding: 5px 8px;
+  box-shadow: var(--glass-edge-top), 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .header-left {
@@ -90,61 +159,75 @@ body.mini-hud-body::after {
   font-weight: 700;
   letter-spacing: 1.5px;
   color: var(--cyan-plasma);
+  text-shadow: 0 0 10px rgba(0, 243, 255, 0.4);
 }
 
 .mini-status-pill {
   font-family: var(--font-mono);
   font-size: 9px;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: 4px;
   letter-spacing: 0.5px;
+  -webkit-backdrop-filter: var(--glass-blur-pill);
+  backdrop-filter: var(--glass-blur-pill);
+  box-shadow: var(--glass-edge-top);
+  transition: all 0.2s ease;
 }
 
 .status-standby {
-  background: rgba(0, 243, 255, 0.15);
+  background: rgba(0, 243, 255, 0.12);
   color: var(--cyan-plasma);
-  border: 1px solid rgba(0, 243, 255, 0.4);
+  border: 1px solid rgba(0, 243, 255, 0.35);
+  box-shadow: var(--glass-edge-top), 0 0 8px rgba(0, 243, 255, 0.15);
 }
 
 .status-listening {
-  background: rgba(255, 183, 0, 0.25);
+  background: rgba(255, 183, 0, 0.22);
   color: var(--gold-stark);
   border: 1px solid var(--gold-stark);
+  box-shadow: var(--glass-edge-top), 0 0 12px rgba(255, 183, 0, 0.4);
   animation: glow-pulse 1s infinite alternate;
 }
 
 .status-thinking {
-  background: rgba(0, 119, 255, 0.3);
-  color: #70b4ff;
+  background: rgba(0, 119, 255, 0.26);
+  color: #8ed0ff;
   border: 1px solid #0077ff;
+  box-shadow: var(--glass-edge-top), 0 0 12px rgba(0, 119, 255, 0.35);
 }
 
 @keyframes glow-pulse {
-  from { box-shadow: 0 0 4px var(--gold-stark); }
-  to { box-shadow: 0 0 12px var(--gold-stark); }
+  from { box-shadow: var(--glass-edge-top), 0 0 6px var(--gold-stark); }
+  to { box-shadow: var(--glass-edge-top), 0 0 16px var(--gold-stark); }
 }
 
 .header-right {
   display: flex;
-  gap: 4px;
+  gap: 5px;
 }
 
 .mini-btn-icon {
-  background: rgba(0, 243, 255, 0.1);
-  border: 1px solid rgba(0, 243, 255, 0.3);
+  background: var(--glass-bg-subtle);
+  -webkit-backdrop-filter: var(--glass-blur-pill);
+  backdrop-filter: var(--glass-blur-pill);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge-top);
   color: var(--cyan-plasma);
   font-family: var(--font-hud);
   font-size: 10px;
   font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 3px;
+  padding: 3px 8px;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .mini-btn-icon:hover {
-  background: rgba(0, 243, 255, 0.3);
-  box-shadow: 0 0 8px rgba(0, 243, 255, 0.5);
+  background: var(--glass-bg-card-hover);
+  border-color: var(--cyan-plasma);
+  color: #fff;
+  box-shadow: var(--glass-edge-top), 0 0 10px rgba(0, 243, 255, 0.4);
+  transform: translateY(-1px);
 }
 
 /* Core Main Area */
@@ -165,11 +248,24 @@ body.mini-hud-body::after {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 243, 255, 0.08) 0%, rgba(8, 16, 34, 0.3) 70%, transparent 100%);
+  -webkit-backdrop-filter: var(--glass-blur-card);
+  backdrop-filter: var(--glass-blur-card);
+  border: 1px solid rgba(0, 243, 255, 0.18);
+  box-shadow: var(--glass-edge-top), 0 0 18px rgba(0, 243, 255, 0.15);
+  transition: all 0.3s ease;
+}
+
+.arc-container:hover {
+  border-color: var(--cyan-plasma);
+  box-shadow: var(--glass-edge-top), 0 0 24px rgba(0, 243, 255, 0.4);
+  transform: scale(1.03);
 }
 
 .arc-container:hover .mic-svg {
   fill: var(--cyan-plasma);
-  filter: drop-shadow(0 0 6px var(--cyan-plasma));
+  filter: drop-shadow(0 0 8px var(--cyan-plasma));
 }
 
 #miniCoreCanvas {
@@ -188,18 +284,26 @@ body.mini-hud-body::after {
 .mic-svg {
   width: 22px;
   height: 22px;
-  fill: rgba(0, 243, 255, 0.7);
+  fill: rgba(0, 243, 255, 0.85);
   transition: all 0.2s;
+  filter: drop-shadow(0 0 4px rgba(0, 243, 255, 0.5));
 }
 
-/* Feed Container */
+/* Feed Container - Frosted Glass Plate */
 .feed-container {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
   height: 100%;
-  gap: 4px;
+  gap: 5px;
+  background: var(--glass-bg-card);
+  -webkit-backdrop-filter: var(--glass-blur-card);
+  backdrop-filter: var(--glass-blur-card);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge-top), var(--glass-edge-bottom), var(--glass-shadow-card);
+  border-radius: 8px;
+  padding: 6px 8px;
 }
 
 .mini-vitals-bar {
@@ -209,13 +313,14 @@ body.mini-hud-body::after {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-dim);
-  border-bottom: 1px dashed rgba(0, 243, 255, 0.15);
-  padding-bottom: 2px;
+  border-bottom: 1px dashed rgba(0, 243, 255, 0.18);
+  padding-bottom: 3px;
 }
 
 .vital-item b {
   color: var(--cyan-plasma);
   font-weight: 600;
+  text-shadow: 0 0 6px rgba(0, 243, 255, 0.3);
 }
 
 .vital-engine {
@@ -223,16 +328,18 @@ body.mini-hud-body::after {
   font-size: 9px;
   color: var(--gold-stark);
   font-weight: 700;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 6px rgba(255, 183, 0, 0.3);
 }
 
 .mini-transcript {
   flex: 1;
   overflow-y: auto;
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.4;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   padding-right: 4px;
 }
 
@@ -241,7 +348,7 @@ body.mini-hud-body::after {
 }
 
 .mini-transcript::-webkit-scrollbar-thumb {
-  background: rgba(0, 243, 255, 0.3);
+  background: rgba(0, 243, 255, 0.35);
   border-radius: 2px;
 }
 
@@ -249,17 +356,23 @@ body.mini-hud-body::after {
   color: var(--gold-stark);
   font-weight: 600;
   font-size: 11px;
+  background: rgba(255, 183, 0, 0.08);
   border-left: 2px solid var(--gold-stark);
-  padding-left: 4px;
+  border-radius: 0 4px 4px 0;
+  padding: 3px 6px;
+  box-shadow: var(--glass-edge-top);
 }
 
 .veronica-bubble {
   color: var(--text-main);
+  background: rgba(0, 243, 255, 0.06);
   border-left: 2px solid var(--cyan-plasma);
-  padding-left: 4px;
+  border-radius: 0 4px 4px 0;
+  padding: 3px 6px;
+  box-shadow: var(--glass-edge-top);
 }
 
-/* Quick Chips */
+/* Quick Chips - Frosted Pills */
 .mini-chips-row {
   display: flex;
   gap: 6px;
@@ -267,27 +380,31 @@ body.mini-hud-body::after {
 
 .chip-btn {
   flex: 1;
-  background: rgba(0, 119, 255, 0.12);
-  border: 1px solid rgba(0, 243, 255, 0.25);
+  background: var(--glass-bg-subtle);
+  -webkit-backdrop-filter: var(--glass-blur-pill);
+  backdrop-filter: var(--glass-blur-pill);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge-top);
   color: #92d5ff;
   font-family: var(--font-hud);
   font-size: 11px;
   font-weight: 600;
-  padding: 3px 0;
-  border-radius: 3px;
+  padding: 4px 0;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: center;
 }
 
 .chip-btn:hover {
-  background: rgba(0, 243, 255, 0.25);
+  background: var(--glass-bg-card-hover);
   color: #fff;
   border-color: var(--cyan-plasma);
-  box-shadow: 0 0 8px rgba(0, 243, 255, 0.4);
+  box-shadow: var(--glass-edge-top), 0 0 10px rgba(0, 243, 255, 0.4);
+  transform: translateY(-1px);
 }
 
-/* Footer & Input */
+/* Footer & Input - Crystalline Dock */
 .mini-footer {
   display: flex;
   gap: 6px;
@@ -298,15 +415,19 @@ body.mini-hud-body::after {
   display: flex;
   flex: 1;
   gap: 4px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(0, 243, 255, 0.3);
-  border-radius: 4px;
-  padding: 2px 4px;
+  background: var(--glass-bg-input);
+  -webkit-backdrop-filter: var(--glass-blur-card);
+  backdrop-filter: var(--glass-blur-card);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge-top), inset 0 2px 6px rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+  padding: 3px 6px;
+  transition: all 0.2s ease;
 }
 
 .mini-input-form:focus-within {
   border-color: var(--cyan-plasma);
-  box-shadow: 0 0 10px rgba(0, 243, 255, 0.35);
+  box-shadow: var(--glass-edge-top), 0 0 12px rgba(0, 243, 255, 0.35), inset 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 #miniInput {
@@ -320,51 +441,59 @@ body.mini-hud-body::after {
 }
 
 #miniInput::placeholder {
-  color: rgba(112, 144, 176, 0.7);
+  color: rgba(139, 162, 196, 0.7);
   font-size: 10px;
 }
 
 .mini-send-btn {
   background: var(--cyan-plasma);
-  color: #050811;
+  color: #030611;
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
   font-size: 10px;
   font-weight: 700;
-  padding: 0 6px;
+  padding: 0 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 8px rgba(0, 243, 255, 0.4);
 }
 
 .mini-send-btn:hover {
   background: #fff;
-  box-shadow: 0 0 8px var(--cyan-plasma);
+  box-shadow: 0 0 12px var(--cyan-plasma);
+  transform: scale(1.05);
 }
 
 .wake-word-pill {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(0, 243, 255, 0.12);
-  border: 1px solid rgba(0, 243, 255, 0.35);
+  background: var(--glass-bg-subtle);
+  -webkit-backdrop-filter: var(--glass-blur-pill);
+  backdrop-filter: var(--glass-blur-pill);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge-top);
   color: var(--cyan-plasma);
   font-family: var(--font-hud);
   font-size: 10px;
   font-weight: 700;
-  padding: 3px 6px;
-  border-radius: 3px;
+  padding: 4px 8px;
+  border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .wake-word-pill:hover {
-  background: rgba(0, 243, 255, 0.25);
+  background: var(--glass-bg-card-hover);
+  border-color: rgba(0, 243, 255, 0.5);
+  box-shadow: var(--glass-edge-top), 0 0 10px rgba(0, 243, 255, 0.3);
 }
 
 .wake-active {
+  background: rgba(0, 243, 255, 0.16);
   border-color: var(--cyan-plasma);
-  box-shadow: 0 0 8px rgba(0, 243, 255, 0.3);
+  box-shadow: var(--glass-edge-top), 0 0 12px rgba(0, 243, 255, 0.35);
 }
 
 .wake-radar {
@@ -372,6 +501,7 @@ body.mini-hud-body::after {
   height: 6px;
   border-radius: 50%;
   background: var(--cyan-plasma);
+  box-shadow: 0 0 6px var(--cyan-plasma);
   animation: radar-sweep 1.2s infinite ease-out;
 }
 

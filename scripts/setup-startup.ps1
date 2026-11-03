@@ -38,3 +38,4 @@ Write-Host "==========================================================" -Foregro
 Write-Host "[SUCCESS] Veronica configured to launch on Windows startup." -ForegroundColor Green
 Write-Host "Location: $shortcutPath" -ForegroundColor Gray
 Write-Host "To remove later, run: .\scripts\setup-startup.ps1 -Remove" -ForegroundColor DarkGray
+
